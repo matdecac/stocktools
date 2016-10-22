@@ -3,116 +3,27 @@
 # .gitignore
 #
 #
-# Created by Mathias de Cacqueray Valmenier on 11/12/2014.
+# Created by Mathias de Cacqueray Valmenier on 16/11/2016.
 #
-# Copyright (c) 2014 Mathias de Cacqueray Valmenier. All rights reserved.
-
-####Ignoring every files####
-*
-*.*
-
-##########Except############
-#--------- Matlab ---------#
-!*.m
-#--------- C / C++ --------#
-!*.c
-!*.cpp
-!*.h
-#-------- Bash ------------#
-!*.sh
-#------- LaTeX ------------#
-!*.tex
-#----- Plain text ---------#
-!*.md
-!*.txt
-#----- Git files ----------#
-!.gitignore
-!readme.md
-!LICENSE
-!contributors.txt
-#----- Sub Folders --------#
-!*/
-####### END Execpt #########
-
-# VARIOUS #
-*.pdf
-*.gz
-
-### CMAKE SPECIFICS FILES ##
-CMakeCache.txt
-CMakeFiles
-Makefile
-cmake_install.cmake
-install_manifest.txtCMakeCache.txt
-CMakeFiles
-Makefile
-cmake_install.cmake
-install_manifest.txt
-### END CMAKE ##############
-
-# Windows Specifics Files ##
-Thumbs.db
-ehthumbs.db
-
-# Folder config file
-Desktop.ini
-
-# Recycle Bin used on file shares
-$RECYCLE.BIN/
-
-# Windows Installer files
-*.cab
-*.msi
-*.msm
-*.msp
-
-# Windows shortcuts
-*.lnk
-
-# MAC OS X Specific Files ##
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Icon must end with two \r
-Icon
-
-
-# Thumbnails
-._*
-
-# Files that might appear on external disk
-.Spotlight-V100
-.Trashes
-
-# Directories potentially created on remote AFP share
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-
-## MATLAB ##
-*.aux
-*.glo
-*.idx
+# Copyright (c) 2016 Mathias de Cacqueray Valmenier. All rights reserved.
+*.png
+*.sqlite3
+*.pyc
+.coverage
+node_modules/
+webpack-stats.json
+sqldata
+static/bundles/
 *.log
-*.toc
-*.ist
-*.acn
-*.acr
-*.alg
-*.bbl
-*.blg
-*.dvi
-*.glg
-*.gls
-*.ilg
-*.ind
-*.lof
-*.lot
-*.maf
-*.mtc
-*.mtc1
-*.out
-*.synctex.gz
+*.sql
+package-lock.json
+*.db
+*.orig
+venv/
+*.bak
+.ipynb_checkpoints/
+*.sqlite
+`.dump
+*.DS_Store
+*.csv
+stocktools/store-sql/
