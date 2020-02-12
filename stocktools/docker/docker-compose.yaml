@@ -55,11 +55,23 @@ services:
     entrypoint: "/home/user/venv/bin/python main-stocks.py"
 
 
+  stockbot:
+    image: pythondocker:latest
+    links:
+      - pgSQLapp
+    volumes:
+      - rootHost:/datajupyter
+    restart: always
+    working_dir: /datajupyter
+    entrypoint: "/home/user/venv/bin/python stock_bot.py"
+
+
 
   orcapp:
     image: quay.io/plotly/orca
     links:
       - jupyterimage
+      - stockbot
     restart: always
 
 
