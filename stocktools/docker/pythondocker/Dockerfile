@@ -1,6 +1,5 @@
 FROM archlinux:latest
 RUN pacman -Syu --noconfirm && pacman -S npm python python-pip gcc --noconfirm && rm -rf /usr/local/var/cache/pacman
-RUN npm install -g electron@1.8.4 orca --unsafe-perm=true --allow-root
 RUN useradd user --home /home/user/ --create-home --shell /bin/bash --uid 994
 USER user
 WORKDIR "/home/user/"

@@ -13,6 +13,12 @@ volumes:
       type: 'none'
       o: 'bind'
       device: '/home/comptadecac/stocktools/scripts'
+  jupyterConfig:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/comptadecac/stocktools/jupyterconfig'
 
 services:
   pgSQLapp:
@@ -37,6 +43,7 @@ services:
       - pgSQLapp
     volumes:
       - rootHost:/datajupyter
+      - jupyterConfig:/home/user/.jupyter
     restart: always
     working_dir: /datajupyter
     entrypoint: "/home/user/venv/bin/jupyter lab --port=8888 --no-browser --ip=0.0.0.0 --allow-root"

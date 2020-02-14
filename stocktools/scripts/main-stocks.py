@@ -25,8 +25,12 @@ import dash_html_components as html
 from dash.exceptions import PreventUpdate
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
-from libsstock import getYFdate, getInfoBuy, plotBasic, computeIchimoku, plotIchimoku
-from stockList import allStocks, stockProspect
+from libsstock import (
+    loadStocks, getYFdate, getInfoBuy, computeIchimoku, fillNameFromYF,
+    graphIchimoku
+)
+jsonToUpdate = 'stockprospects.json'
+df = pd.read_json(jsonToUpdate, orient='index')
 
 app = dash.Dash(external_stylesheets=[dbc.themes.CYBORG])
 server = app.server
@@ -48,7 +52,7 @@ app.layout = dbc.Container(fluid=True, children=[
                 dbc.Col([
                     dcc.Dropdown(
                         id='list-stock',
-                        options=[{'label':stock['stockname'], 'value':stock['stockname']} for stock in stockProspect],
+                        options=[{'label':df.loc[ind]['name'], 'value':df.loc[ind]['stockname']} for ind in df.index],
                         value=[],
                         placeholder="Choisir Stock",
                         multi=False,
@@ -94,12 +98,8 @@ app.layout = dbc.Container(fluid=True, children=[
         style={'height': 1000},
     ),
     dcc.Store(id='page-full-state', storage_type='memory', data={}),
-    #html.Link(rel='stylesheet',href='/assets/bootstrap-4.3.1-dist/css/bootstrap-grid.min.css'),
-    #html.Link(rel='stylesheet',href='/assets/bootstrap-4.3.1-dist/css/bootstrap-grid.min.css.map'),
     html.Link(rel='stylesheet',href='/assets/bootstrap-4.3.1-dist/css/bootstrap.min.css'),
     html.Link(rel='stylesheet',href='/assets/bootstrap-4.3.1-dist/css/bootstrap.min.css.map'),
-    #html.Link(rel='stylesheet',href='/assets/bootstrap-4.3.1-dist/css/bootstrap-reboot.min.css'),
-    #html.Link(rel='stylesheet',href='/assets/bootstrap-4.3.1-dist/css/bootstrap-reboot.min.css.map'),
     html.Link(rel='stylesheet',href='/assets/bootstrap-4.3.1-dist/js/bootstrap.bundle.min.js'),
     html.Link(rel='stylesheet',href='/assets/bootstrap-4.3.1-dist/js/bootstrap.bundle.min.js.map'),
     html.Link(rel='stylesheet',href='/assets/bootstrap-4.3.1-dist/js/bootstrap.min.js'),
@@ -123,7 +123,6 @@ def update_options(value):
         value = ''
     return [value]
 
-
 @app.callback(
     [
         Output("graph-stock", "figure")
@@ -135,13 +134,19 @@ def update_options(value):
     ],
 )
 def update_options(value, dateStart, dateStop):
+    print(len(value))
     if len(value) >= 0:
         try:
-            stockProspect = [{'stockname': value,},]
-            stockProspect = getYFdate(stockProspect, dateStart, dateStop)
-            stockProspect = getInfoBuy(stockProspect, allStocks)
-            stock = computeIchimoku(stockProspect[0])
-            return [plotIchimoku(stock).update({'layout': dict(template="plotly_dark", xaxis_rangeslider_visible=False)})]
+            df = pd.DataFrame([{'stockname': value}])
+            dfData = loadStocks('mystocks.json')
+            dfData = dfData[dfData['stockname'] == df.iloc[0]['stockname']]
+            if len(dfData) > 0:
+                df = dfData
+            else:
+                df = fillNameFromYF(df)
+            dfHist = getYFdate(df, dateStart, dateStop)
+            dfHist = computeIchimoku(dfHist[0])
+            return [graphIchimoku(df, dfHist).update({'layout': dict(template="plotly_dark", xaxis_rangeslider_visible=False)})]
         except:
             raise PreventUpdate
     else:

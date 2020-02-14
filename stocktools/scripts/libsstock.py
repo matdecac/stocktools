@@ -8,38 +8,38 @@ import pandas as pd
 import yfinance as yf
 from yahoo_fin import stock_info as si
 from stockList import allStocks
+from copy import copy
 
-def getYFdate(stockList, startDate=date.today() - timedelta(days=365+41), stopDate=date.today()):
-    listStockNames = [stock['stockname'] for stock in stockList]
 
-    allStocksHist = yf.download(
-        listStockNames,
-        start=startDate, 
-        end=stopDate, 
-        progress=False,
-        group_by="ticker"
+def loadStocks(jsonFile):
+    def getLiveValue(stockName):
+        return si.get_live_price(stockName)
+
+    df = pd.read_json(jsonFile, orient='index')
+    df['valueNow'] = df['stockname'].apply(lambda x : getLiveValue(x))
+    df['boughtDate'] = pd.to_datetime(df['boughtDate'], unit='ms')
+    selectBought = (df['boughtValue'].notna())
+    selectSold = (df['sellDate'].notna() & selectBought)
+    selectBoughtNotSold = (selectBought & selectSold == False)
+    df.loc[selectBought, 'boughtNetValue'] = (
+        df[selectBought]['boughtValue'] + (df[selectBought]['boughtFrais'] + df[selectBought]['sellFrais'])/df[selectBought]['boughtQ']
     )
+    df.loc[selectSold, 'netActualGain'] = (
+        (df[selectSold]['sellValue'] - df[selectSold]['boughtNetValue'])
+    )
+    df.loc[selectBoughtNotSold, 'netActualGain'] = (
+        (df[selectBoughtNotSold]['valueNow'] - df[selectBoughtNotSold]['boughtNetValue'])
+    )
+    df['netActualGain'] = df['netActualGain'] * df['boughtQ']
+    df.loc[selectBought, 'netActualGainPercent'] = (
+        (df[selectBought]['netActualGain'])/df[selectBought]['boughtNetValue']/df['boughtQ']
+    )
+    df['netActualGainPercent'] = df['netActualGainPercent']*100
+    df.loc[selectSold, 'netActualLock'] = 0.0
+    df.loc[selectBoughtNotSold, 'netActualLock'] = df[selectBoughtNotSold]['valueNow'] * df[selectBoughtNotSold]['boughtQ']
+    return df
 
-    for stock in stockList:
-        if len(stockList) > 1:
-            stock['history'] = allStocksHist[stock['stockname']].fillna(method='ffill')
-        else:
-            stock['history'] = allStocksHist.fillna(method='ffill')
-        #stock['info'] = stock['ticker'].info
-    return stockList
-
-
-def getInfoBuy(stockList, allStocks):
-    for stock in stockList:
-        stock['ticker'] = yf.Ticker(stock['stockname'])
-        try:
-            stock['name'] = stock['ticker'].info['shortName']
-        except:
-            if 'name' not in stock:
-                stock['name'] = stock['stockname']
-        for ourStock in allStocks:
-            if stock['stockname'] in ourStock['stockname']:
-                stock.update(ourStock)
+def getInfoBuy(stockList):
     for stock in stockList:
         stock['valueNow'] = si.get_live_price(stock['stockname'])
         #stock['history'].index.get_loc(date.today(), method='nearest')
@@ -51,25 +51,48 @@ def getInfoBuy(stockList, allStocks):
         if 'boughtNetValue' in stock:
             if 'sellDate' not in stock:
                 stock['netActualGain'] = (stock['valueNow'] - stock['boughtNetValue']) * stock['boughtQ']
+                stock['netActualLock'] = (stock['valueNow']) * stock['boughtQ']
+                stock['netActualVar'] = ((stock['valueNow'] - stock['boughtNetValue'])) / stock['boughtNetValue']
             else:
                 stock['netActualGain'] = stock['sellValue'] - stock['boughtNetValue'] * stock['boughtQ']
+                stock['netActualLock'] = (stock['sellValue']) * stock['boughtQ']
+                stock['netActualVar'] = ((stock['sellValue'] - stock['boughtNetValue'])) / stock['boughtNetValue']
 
     return stockList
 
-def plotBasic(stock):
-    fig = go.Figure(data=[
-        {'y': stock['history']['Close'], 'x':stock['history'].index, 'name': 'Stock Value'},
-        {'x': 
-         [dfStock.index[0], dfStock.index[-1]], 
-         'y': stock['boughtNetValue'] * np.ones((2)), 
-         'name': 'Gain barrier'
-        }
-    ], layout={'title': stock['name']})
-    fig.update_layout(template="plotly_dark")
-    fig.show()
+def searchFullName(stockName):
+    try:
+        return yf.Ticker(stockName).info['shortName']
+    except:
+        return np.NaN
+def fillNameFromYF(df):
+    if 'name' in df.columns:
+        df.loc[df['name'].isna(), 'name'] = df[df['name'].isna()]['stockname'].apply(lambda x : searchFullName(x))
+    else:
+        df['name'] = df['stockname'].apply(lambda x : searchFullName(x))
+    return df
+
+def getYFdate(df, startDate=date.today() - timedelta(days=365+41), stopDate=date.today()):
+    listStockNames = [df.loc[ind]['stockname'] for ind in df.index]
+
+    allStocksHist = yf.download(
+        listStockNames,
+        start=startDate, 
+        end=stopDate, 
+        progress=False,
+        group_by="ticker"
+    )
     
-def computeIchimoku(stock):
-    d = stock['history']
+    stockData = []
+    for ind in range(len(listStockNames)):
+        if len(listStockNames) > 1:
+            stockData.append(allStocksHist[listStockNames[ind]].fillna(method='ffill'))
+        else:
+            stockData.append(allStocksHist.fillna(method='ffill'))
+        #stock['info'] = stock['ticker'].info
+    return stockData
+
+def computeIchimoku(d):
     minDate = d.index[0]
     maxDate = d.index[-1]
     for ind in range(1, 52+1):
@@ -98,11 +121,63 @@ def computeIchimoku(stock):
     d.loc[:, 'chikou_span'] = d['Close'].shift(-26)
 
     d.loc[:, 'senkou_span_pos'] = d['senkou_span_a'] > d['senkou_span_b']
-    stock['history'] = d
-    return stock
-    
-def plotIchimoku(stock):
-    d = stock['history']
+    return d
+
+def graphBestGain(df):
+    dataFig = []
+    dataFig.append({
+            'labels': df['name'],
+            'values': df['netActualGain'],
+            'text': [df.loc[ind]['name'] + '\n' + '{:.2f} €'.format(df.loc[ind]['netActualGain']) for ind in df.index],
+            'type': 'pie',
+            'textinfo':'text'
+    })
+    fig = go.Figure(data=dataFig, layout={'title': 'Best rendement'})
+    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
+    return fig
+def graphWorseGain(df):
+    dataFig = []
+    dataFig.append({
+            'labels': df['name'],
+            'values': - df['netActualGain'],
+            'text': [df.loc[ind]['name'] + '\n' + '{:.2f} €'.format(df.loc[ind]['netActualGain']) for ind in df.index],
+            'type': 'pie',
+            'textinfo':'text'
+    })
+    fig = go.Figure(data=dataFig, layout={'title': 'Worse rendement'})
+    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
+    return fig
+def graphCashLock(df):
+    dataFig = []
+    dataFig.append({
+            'labels': df['name'],
+            'values': df['netActualLock'],
+            'text': [df.loc[ind]['name'] + '\n' + '{:.2f} €'.format(df.loc[ind]['netActualLock']) for ind in df.index],
+            'type': 'pie',
+            'textinfo':'text'
+    })
+    fig = go.Figure(data=dataFig, layout={'title': 'Cash repartition'})
+    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
+    return fig
+def graphRendement(df):
+    selectBought = (df['boughtValue'].notna())
+    selectSold = (df['sellDate'].notna() & selectBought) == False
+    listData = list(df[selectSold]['netActualGain'])
+    listData.append(df[selectSold]['netActualGain'].sum())
+    xData = [df.loc[ind]['name'] + '\n' + '{:.2f} €'.format(df.loc[ind]['netActualGain']) for ind in df[selectSold].index]
+    xData.append('Somme : {:.2f} €'.format(listData[-1]))
+    dataFig = []
+    dataFig.append({
+            'x': xData,
+            'y': listData,
+            'type': 'bar',
+    })
+    fig = go.Figure(data=dataFig, layout={'title': 'Rendement'})
+    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
+    return fig
+
+def graphIchimoku(stockSerie, stockHist):
+    d = stockHist
     dataFig = []
     custom = d.copy()
     custom.loc[custom['senkou_span_pos'], 'senkou_span_a_pos'] = custom['senkou_span_a'][custom['senkou_span_pos']]
@@ -114,24 +189,30 @@ def plotIchimoku(stock):
     custom.loc[custom['senkou_span_pos'], 'senkou_span_a_neg'] = custom['senkou_span_b'][custom['senkou_span_pos']]
     custom.loc[custom['senkou_span_pos'], 'senkou_span_b_neg'] = custom['senkou_span_b'][custom['senkou_span_pos']]
 
-    dataFig.append(
-        {'y': custom['senkou_span_a_pos'], 'x':custom['senkou_span_a_pos'].index, 'name': 'senkou_span_a', 'opacity': 0.4, 'line': {'width':1.0, 'color': 'blue'}}
-    )
-    dataFig.append(
-        {'y': custom['senkou_span_b_pos'], 'x':custom['senkou_span_b_pos'].index, 'name': 'senkou_span_b', 'opacity': 0.4, 'line': {'width':1.0, 'color': 'blue'}, 'fill':'tonextx'}
-    )
-    dataFig.append(
-        {'y': custom['senkou_span_a_neg'], 'x':custom['senkou_span_a_neg'].index, 'name': 'senkou_span_a', 'opacity': 0.4, 'line': {'width':1.0, 'color': 'orange'}}
-    )
-    dataFig.append(
-        {'y': custom['senkou_span_b_neg'], 'x':custom['senkou_span_b_neg'].index, 'name': 'senkou_span_b', 'opacity': 0.4, 'line': {'width':1.0, 'color': 'orange'}, 'fill':'tonextx'}
-    )
-    dataFig.append(
-        {'y': custom['senkou_span_a'], 'x':custom['senkou_span_a'].index, 'name': 'senkou_span_a', 'opacity': 1.0, 'line': {'width':1.0, 'color': 'blue'}}
-    )
-    dataFig.append(
-        {'y': custom['senkou_span_b'], 'x':custom['senkou_span_b'].index, 'name': 'senkou_span_a', 'opacity': 1.0, 'line': {'width':1.0, 'color': 'orange'}}
-    )
+    dataFig.append({
+        'y': custom['senkou_span_a_pos'], 'x':custom['senkou_span_a_pos'].index, 
+        'name': 'senkou_span_a', 'opacity': 0.4, 'line': {'width':1.0, 'color': 'blue'}
+    })
+    dataFig.append({
+        'y': custom['senkou_span_b_pos'], 'x':custom['senkou_span_b_pos'].index, 
+        'name': 'senkou_span_b', 'opacity': 0.4, 'line': {'width':1.0, 'color': 'blue'}, 'fill':'tonextx'
+    })
+    dataFig.append({
+        'y': custom['senkou_span_a_neg'], 'x':custom['senkou_span_a_neg'].index, 
+        'name': 'senkou_span_a', 'opacity': 0.4, 'line': {'width':1.0, 'color': 'orange'}
+    })
+    dataFig.append({
+        'y': custom['senkou_span_b_neg'], 'x':custom['senkou_span_b_neg'].index, 
+        'name': 'senkou_span_b', 'opacity': 0.4, 'line': {'width':1.0, 'color': 'orange'}, 'fill':'tonextx'
+    })
+    dataFig.append({
+        'y': custom['senkou_span_a'], 'x':custom['senkou_span_a'].index, 
+        'name': 'senkou_span_a', 'opacity': 1.0, 'line': {'width':1.0, 'color': 'blue'}
+    })
+    dataFig.append({
+        'y': custom['senkou_span_b'], 'x':custom['senkou_span_b'].index, 
+        'name': 'senkou_span_a', 'opacity': 1.0, 'line': {'width':1.0, 'color': 'orange'}
+    })
     for serieN in ['tenkan_sen', 'kijun_sen', 'chikou_span']:
         dataFig.append(
             {'y': d[serieN], 'x':d.index, 'name': serieN, 'opacity': 1, 'line': {'width':1}}
@@ -147,15 +228,20 @@ def plotIchimoku(stock):
             'type': 'candlestick',
             'name': 'candlestick'
     })
-    if 'boughtDate' in stock:
-        dataFig.append({'x': 
-            [stock['boughtDate'], stock['sellDate'] if 'sellDate' in stock else datetime.today()], 
-            'y': [stock['boughtValue'], stock['boughtNetValue']], 
+    if 'boughtDate' in stockSerie.columns and stockSerie['boughtDate'].notna().values[0]:
+        xData = [
+            stockSerie['boughtDate'].values[0].astype('M8[D]').astype('O'),
+            stockSerie['sellDate'].values[0] if stockSerie['sellDate'].notna().values[0] else np.datetime64('now')
+        ]
+        yData = [stockSerie['boughtNetValue'].values[0], stockSerie['boughtNetValue'].values[0]]
+        dataFig.append({
+            'x': xData, 
+            'y': yData, 
             'name': 'Gain barrier', 'type': 'scatter', 'mode': 'lines'
         })
         dataFig.append({
-            'x': [stock['boughtDate']], 
-            'y': [stock['boughtValue']], 
+            'x': stockSerie['boughtDate'], 
+            'y': stockSerie['boughtValue'], 
             'name': 'Buy In', 'type': 'scatter', 'mode': 'markers',
             'marker': dict(
                 color='yellow',
@@ -166,10 +252,10 @@ def plotIchimoku(stock):
                 )
             ),
         })
-    if 'sellDate' in stock:
+    if 'sellDate' in stockSerie.columns and stockSerie['sellDate'].notna().values[0]:
         dataFig.append({
-            'x': [stock['sellDate']], 
-            'y': [stock['sellValue']], 
+            'x': stockSerie['sellDate'], 
+            'y': stockSerie['sellValue'], 
             'name': 'Sell', 'type': 'scatter', 'mode': 'markers',
             'marker': dict(
                 color='orange',
@@ -180,5 +266,7 @@ def plotIchimoku(stock):
                 )
             ),
         })
+    fig = go.Figure(data=dataFig, layout={'title': str(stockSerie['name'].iloc[0])})
+    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
     
-    return go.Figure(data=dataFig, layout={'title': stock['name']})
+    return fig
