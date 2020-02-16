@@ -10,55 +10,34 @@ from yahoo_fin import stock_info as si
 from stockList import allStocks
 from copy import copy
 
+def getLiveValue(stockName):
+    return si.get_live_price(stockName)
 
 def loadStocks(jsonFile):
-    def getLiveValue(stockName):
-        return si.get_live_price(stockName)
-
     df = pd.read_json(jsonFile, orient='index')
     df['valueNow'] = df['stockname'].apply(lambda x : getLiveValue(x))
-    df['boughtDate'] = pd.to_datetime(df['boughtDate'], unit='ms')
-    selectBought = (df['boughtValue'].notna())
-    selectSold = (df['sellDate'].notna() & selectBought)
-    selectBoughtNotSold = (selectBought & selectSold == False)
-    df.loc[selectBought, 'boughtNetValue'] = (
-        df[selectBought]['boughtValue'] + (df[selectBought]['boughtFrais'] + df[selectBought]['sellFrais'])/df[selectBought]['boughtQ']
-    )
-    df.loc[selectSold, 'netActualGain'] = (
-        (df[selectSold]['sellValue'] - df[selectSold]['boughtNetValue'])
-    )
-    df.loc[selectBoughtNotSold, 'netActualGain'] = (
-        (df[selectBoughtNotSold]['valueNow'] - df[selectBoughtNotSold]['boughtNetValue'])
-    )
-    df['netActualGain'] = df['netActualGain'] * df['boughtQ']
-    df.loc[selectBought, 'netActualGainPercent'] = (
-        (df[selectBought]['netActualGain'])/df[selectBought]['boughtNetValue']/df['boughtQ']
-    )
-    df['netActualGainPercent'] = df['netActualGainPercent']*100
-    df.loc[selectSold, 'netActualLock'] = 0.0
-    df.loc[selectBoughtNotSold, 'netActualLock'] = df[selectBoughtNotSold]['valueNow'] * df[selectBoughtNotSold]['boughtQ']
+    if 'boughtValue' in df.columns:
+        selectBought = (df['boughtValue'].notna())
+        df.loc[selectBought, 'boughtDate'] = pd.to_datetime(df[selectBought]['boughtDate'], unit='ms')
+        selectSold = (df['sellDate'].notna() & selectBought)
+        selectBoughtNotSold = (selectBought & selectSold == False)
+        df.loc[selectBought, 'boughtNetValue'] = (
+            df[selectBought]['boughtValue'] + (df[selectBought]['boughtFrais'] + df[selectBought]['sellFrais'])/df[selectBought]['boughtQ']
+        )
+        df.loc[selectSold, 'netActualGain'] = (
+            (df[selectSold]['sellValue'] - df[selectSold]['boughtNetValue'])
+        )
+        df.loc[selectBoughtNotSold, 'netActualGain'] = (
+            (df[selectBoughtNotSold]['valueNow'] - df[selectBoughtNotSold]['boughtNetValue'])
+        )
+        df['netActualGain'] = df['netActualGain'] * df['boughtQ']
+        df.loc[selectBought, 'netActualGainPercent'] = (
+            (df[selectBought]['netActualGain'])/df[selectBought]['boughtNetValue']/df['boughtQ']
+        )
+        df['netActualGainPercent'] = df['netActualGainPercent']*100
+        df.loc[selectSold, 'netActualLock'] = 0.0
+        df.loc[selectBoughtNotSold, 'netActualLock'] = df[selectBoughtNotSold]['valueNow'] * df[selectBoughtNotSold]['boughtQ']
     return df
-
-def getInfoBuy(stockList):
-    for stock in stockList:
-        stock['valueNow'] = si.get_live_price(stock['stockname'])
-        #stock['history'].index.get_loc(date.today(), method='nearest')
-        if 'boughtValue' in stock:
-            stock['boughtNetValue'] = stock['boughtValue'] + (stock['boughtFrais'] + stock['sellFrais'])/stock['boughtQ']
-            stock['netActualGainPercent'] = (
-                stock['valueNow'] - stock['boughtNetValue']
-            ) / stock['boughtNetValue']
-        if 'boughtNetValue' in stock:
-            if 'sellDate' not in stock:
-                stock['netActualGain'] = (stock['valueNow'] - stock['boughtNetValue']) * stock['boughtQ']
-                stock['netActualLock'] = (stock['valueNow']) * stock['boughtQ']
-                stock['netActualVar'] = ((stock['valueNow'] - stock['boughtNetValue'])) / stock['boughtNetValue']
-            else:
-                stock['netActualGain'] = stock['sellValue'] - stock['boughtNetValue'] * stock['boughtQ']
-                stock['netActualLock'] = (stock['sellValue']) * stock['boughtQ']
-                stock['netActualVar'] = ((stock['sellValue'] - stock['boughtNetValue'])) / stock['boughtNetValue']
-
-    return stockList
 
 def searchFullName(stockName):
     try:
@@ -122,6 +101,46 @@ def computeIchimoku(d):
 
     d.loc[:, 'senkou_span_pos'] = d['senkou_span_a'] > d['senkou_span_b']
     return d
+
+def getValueDays(historyData, days):
+    result = historyData.iloc[historyData.index.get_loc(datetime.today() - timedelta(days=days),method='nearest')]
+    return np.mean([result['Close'], result['Open']])
+def computeVar(dfSerie, histData, refDay=1):
+    return dfSerie['valueNow'] / getValueDays(histData, refDay) - 1.0
+def checkVarPos(dfSerie, histData, refDay=1, percentVar=0.05):
+    return computeVar(dfSerie, histData, refDay) > percentVar
+def checkVarNeg(dfSerie, histData, refDay=1, percentVar=-0.05):
+    return computeVar(dfSerie, histData, refDay) < percentVar
+def computeVarAndStatus(df, historyData, refDay=1, percentVarNeg=-0.05, percentVarPos=0.05):
+    for ind in range(len(df)):
+        df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1Neg'] = checkVarNeg(df.iloc[ind], historyData[ind], refDay, percentVarNeg)
+        df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1Pos'] = checkVarPos(df.iloc[ind], historyData[ind], refDay, percentVarPos)
+        df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1day'] = computeVar(df.iloc[ind], historyData[ind], refDay)
+    return df
+def checkVar(nbDays=1, fileJson='mystocks.json'):
+    strOut = ''
+    df = loadStocks(fileJson)
+    historyData = getYFdate(df, startDate=date.today() - timedelta(days=nbDays+1), stopDate=date.today() + timedelta(days=1))
+    for data in df[computeVarAndStatus(df, historyData, nbDays)['var1Neg']].index:
+        dataOut = df.loc[data]
+        strOut += (dataOut['name'] + ' var : {:.2f}%'.format(dataOut['var1day'] * 100)) + '\n'
+    for data in df[computeVarAndStatus(df, historyData, nbDays)['var1Pos']].index:
+        dataOut = df.loc[data]
+        strOut += (dataOut['name'] + ' var : {:.2f}%'.format(dataOut['var1day'] * 100)) + '\n'
+    return (strOut, df, historyData)
+
+def graphEvolutionTitre(histData, data):
+    listData = [getValueDays(histData, 30 * months) for months in [12, 6, 3, 1, 1/30]] + [data['valueNow']]
+    listData = np.array(listData) / listData[0] * 100
+    dataFig = []
+    dataFig.append({
+            'x': ['1 year ago', 'six months ago', 'three months ago', 'last month', 'yesterday', 'now'],
+            'y': listData,
+            'type': 'bar',
+    })
+    fig = go.Figure(data=dataFig, layout={'title': data['name'] + ' Progression du titre sur 1 an'})
+    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
+    return fig
 
 def graphBestGain(df):
     dataFig = []

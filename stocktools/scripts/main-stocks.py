@@ -29,6 +29,7 @@ from libsstock import (
     loadStocks, getYFdate, getInfoBuy, computeIchimoku, fillNameFromYF,
     graphIchimoku
 )
+
 jsonToUpdate = 'stockprospects.json'
 df = pd.read_json(jsonToUpdate, orient='index')
 
