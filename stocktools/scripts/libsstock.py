@@ -37,6 +37,8 @@ def loadStocks(jsonFile):
         df['netActualGainPercent'] = df['netActualGainPercent']*100
         df.loc[selectSold, 'netActualLock'] = 0.0
         df.loc[selectBoughtNotSold, 'netActualLock'] = df[selectBoughtNotSold]['valueNow'] * df[selectBoughtNotSold]['boughtQ']
+        if 'sellDate' in df.columns:
+            df['sellDate'] = pd.to_datetime(df['sellDate'], unit='ms')
     return df
 
 def searchFullName(stockName):

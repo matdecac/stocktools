@@ -26,7 +26,7 @@ from dash.exceptions import PreventUpdate
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 from libsstock import (
-    loadStocks, getYFdate, getInfoBuy, computeIchimoku, fillNameFromYF,
+    loadStocks, getYFdate, computeIchimoku, fillNameFromYF,
     graphIchimoku
 )
 
