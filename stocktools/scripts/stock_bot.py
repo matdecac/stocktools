@@ -13,53 +13,49 @@ from libsstock import (
 from plotly_tools import genIMGfromFile
 import telepot
 
-def displayGraphValues(mybot, chat_id):
-    mybot.sendMessage(
-        chat_id, 'Veuillez patientez pendant la frabrication du graphe...'
-    )
+def displayGraphValues(mybot, chat_id, msg):
     df = loadStocks('mystocks.json')
     genIMGfromFile(graphRendement(df), 'img.png', scale=1.3, width=800, height=500)
     mybot.sendPhoto(chat_id, open('img.png', 'rb'))
 
-def sendVarIf(mybot, chat_id):
+def sendVarIf(mybot, chat_id, msg):
     sendVarIfJson(mybot, chat_id, 'mystocks.json')
-def sendVarIfprospects(mybot, chat_id):
+def sendVarIfprospects(mybot, chat_id, msg):
     sendVarIfJson(mybot, chat_id, 'stockprospects.json')
 
 def sendVarIfJson(mybot, chat_id, fileJson):
-    mybot.sendMessage(
-        chat_id, 'Veuillez patientez pendant la recherche de données...'
-    )
     (strOut, dfData, historyData) = checkVar(1, fileJson)
     if len(strOut) > 0:
         mybot.sendMessage(
             chat_id, strOut
         )
-        # recall for generate graph over a year
-        (strOut, dfData2, historyData) = checkVar(360, fileJson)
-        listStockNames = [dfData2.loc[ind]['stockname'] for ind in dfData2.index]
-        for ind in dfData[dfData['var1Neg']].index:
-            data=genIMGfromFile(graphEvolutionTitre(historyData[ind], dfData.iloc[ind]), 'img.png', scale=1.3, width=800, height=500)
-            mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-            histo = computeIchimoku(historyData[ind])
-            data=genIMGfromFile(graphIchimoku(
-                dfData[dfData['stockname'] == listStockNames[ind]], histo
-            ), 'img.png', scale=1.3, width=800, height=500)
-            mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-        for ind in dfData[dfData['var1Pos']].index:
-            data=genIMGfromFile(graphEvolutionTitre(historyData[ind], dfData.iloc[ind]), 'img.png', scale=1.3, width=800, height=500)
-            mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-            histo = computeIchimoku(historyData[ind])
-            data=genIMGfromFile(graphIchimoku(
-                dfData[dfData['stockname'] == listStockNames[ind]], histo
-            ), 'img.png', scale=1.3, width=800, height=500)
-            mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-    else:
-        mybot.sendMessage(
-            chat_id, 'Pas de variations'
-        )
 
-def listMenuItems(mybot, chat_id):
+def genDataFromStock(mybot, chat_id, msg):
+    # recall for generate graph over a year
+    #pdb.set_trace()
+    stockName = msg["text"].replace('/stockinfo','').replace('_', '.')
+    
+    
+    (strOut, dfData2, historyData) = checkVar(360, 'mystocks.json', which='all', stockName=stockName)
+    listStockNames = [dfData2.loc[ind]['stockname'] for ind in dfData2.index]
+    for ind in dfData2[dfData2['var1Neg']].index:
+        data=genIMGfromFile(graphEvolutionTitre(historyData[ind], dfData2.iloc[ind]), 'img.png', scale=1.3, width=800, height=500)
+        mybot.sendPhoto(chat_id, open('img.png', 'rb'))
+        histo = computeIchimoku(historyData[ind])
+        data=genIMGfromFile(graphIchimoku(
+            dfData2[dfData2['stockname'] == listStockNames[ind]], histo
+        ), 'img.png', scale=1.3, width=800, height=500)
+        mybot.sendPhoto(chat_id, open('img.png', 'rb'))
+    for ind in dfData2[dfData2['var1Pos']].index:
+        data=genIMGfromFile(graphEvolutionTitre(historyData[ind], dfData2.iloc[ind]), 'img.png', scale=1.3, width=800, height=500)
+        mybot.sendPhoto(chat_id, open('img.png', 'rb'))
+        histo = computeIchimoku(historyData[ind])
+        data=genIMGfromFile(graphIchimoku(
+            dfData2[dfData2['stockname'] == listStockNames[ind]], histo
+        ), 'img.png', scale=1.3, width=800, height=500)
+        mybot.sendPhoto(chat_id, open('img.png', 'rb'))
+
+def listMenuItems(mybot, chat_id, msg):
     mybot.sendMessage(
         chat_id, '''
         Commandes possibles :\n
@@ -69,21 +65,23 @@ def listMenuItems(mybot, chat_id):
 availableCommands = {
     'menu': {'fct': listMenuItems, 'details': 'Affiche les commandes disponibles.'},
     'gainetpertes': {'fct': displayGraphValues, 'details': 'Répartition des pertes et gain par actions.'},
-    'variations': {'fct': sendVarIf, 'details': 'Visualiser les variations sur les valeurs.'},
-    'variationsprospects': {'fct': sendVarIfprospects, 'details': 'Visualiser les variations sur les valeurs en prospects.'},
+    'varportefeuille': {'fct': sendVarIf, 'details': 'Visualiser les variations sur les valeurs.'},
+    'varprospects': {'fct': sendVarIfprospects, 'details': 'Visualiser les variations sur les valeurs en prospects.'},
+    'stockinfo': {'fct': genDataFromStock, 'details': 'Visualiser les variations sur les valeurs en prospects.'},
 }
 
 def handle(msg):
     global mybot
     content_type, chat_type, chat_id = telepot.glance(msg)
+    msgDecoded = False
     
     if content_type == 'text':
-        if msg["text"] in ['/' + value for value in availableCommands.keys()]:
-            for cmd, value in availableCommands.items():
-                if msg["text"] == '/' + cmd:
-                    value['fct'](mybot, chat_id)
-        else:
-            mybot.sendMessage(chat_id, "Message '{}' non géré, essayez /menu.".format(msg["text"]))
+        for cmd, value in availableCommands.items():
+            if '/' + cmd in msg["text"]:
+                msgDecoded = True
+                value['fct'](mybot, chat_id, msg)
+    if not msgDecoded:
+        mybot.sendMessage(chat_id, "Message '{}' non géré, essayez /menu.".format(msg["text"]))
 
 
 
@@ -100,7 +98,7 @@ def main():
     )
     while(1):
         thisHourSend = datetime.today().hour
-        if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour >= 9 and datetime.today().hour <= 18):
+        if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
             sendVarIf(mybot, bot_chatID)
             sendVarIfprospects(mybot, bot_chatID)
         print('Sleeping 15 minutes')

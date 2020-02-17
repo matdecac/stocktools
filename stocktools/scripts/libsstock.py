@@ -105,10 +105,11 @@ def computeIchimoku(d):
     return d
 
 def getValueDays(historyData, days):
-    result = historyData.iloc[historyData.index.get_loc(datetime.today() - timedelta(days=days),method='nearest')]
-    return np.mean([result['Close'], result['Open']])
+    result = historyData.iloc[historyData.index.get_loc(datetime.today() - timedelta(days=days),method='pad')]
+    #pdb.set_trace()
+    return result['Close']
 def computeVar(dfSerie, histData, refDay=1):
-    return dfSerie['valueNow'] / getValueDays(histData, refDay) - 1.0
+    return getValueDays(histData, 0) / getValueDays(histData, refDay) - 1.0
 def checkVarPos(dfSerie, histData, refDay=1, percentVar=0.05):
     return computeVar(dfSerie, histData, refDay) > percentVar
 def checkVarNeg(dfSerie, histData, refDay=1, percentVar=-0.05):
@@ -119,20 +120,52 @@ def computeVarAndStatus(df, historyData, refDay=1, percentVarNeg=-0.05, percentV
         df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1Pos'] = checkVarPos(df.iloc[ind], historyData[ind], refDay, percentVarPos)
         df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1day'] = computeVar(df.iloc[ind], historyData[ind], refDay)
     return df
-def checkVar(nbDays=1, fileJson='mystocks.json'):
+
+
+def genText1stock(dataOut):
+    return  ('/stockinfo' + dataOut['stockname'].replace('.', '_') + ' ' + dataOut['name'] + ' var : {:.2f}%'.format(dataOut['var1day'] * 100)) + '\n'
+def checkVar(nbDays=1, fileJson='mystocks.json', which='all', stockName=None):
     strOut = ''
     df = loadStocks(fileJson)
-    historyData = getYFdate(df, startDate=date.today() - timedelta(days=nbDays+1), stopDate=date.today() + timedelta(days=1))
-    for data in df[computeVarAndStatus(df, historyData, nbDays)['var1Neg']].index:
-        dataOut = df.loc[data]
-        strOut += (dataOut['name'] + ' var : {:.2f}%'.format(dataOut['var1day'] * 100)) + '\n'
-    for data in df[computeVarAndStatus(df, historyData, nbDays)['var1Pos']].index:
-        dataOut = df.loc[data]
-        strOut += (dataOut['name'] + ' var : {:.2f}%'.format(dataOut['var1day'] * 100)) + '\n'
+
+    df2 = df
+    if stockName is not None:
+        df2 = pd.DataFrame([{'stockname': stockName, 'name': stockName}])
+        df = df[df['stockname'] == df2.iloc[0]['stockname']]
+    elif 'sellValue' in df.columns:
+        #pdb.set_trace()
+        df = df[df['sellValue'].isna()]
+    
+    if len(df2) > 0:
+        df = df2
+    else:
+        df = fillNameFromYF(df)
+
+    df = df.drop_duplicates('stockname')
+    
+    nbDaysGetData = nbDays
+    if nbDays < 4:
+        nbDaysGetData = 4
+
+    historyData = getYFdate(
+        df, startDate=date.today() - timedelta(days=nbDaysGetData), stopDate=date.today() + timedelta(days=1)
+    )
+    if 'all' in which:
+        for data in computeVarAndStatus(df, historyData, nbDays).sort_values('var1day').index:
+            dataOut = df.loc[data]
+            strOut += genText1stock(dataOut)
+    elif 'neg' in which:
+        for data in df[computeVarAndStatus(df, historyData, nbDays).sort_values('var1day')['var1Neg']].index:
+            dataOut = df.loc[data]
+            strOut += genText1stock(dataOut)
+    elif 'pos' in which:
+        for data in df[computeVarAndStatus(df, historyData, nbDays).sort_values('var1day')['var1Pos']].index:
+            dataOut = df.loc[data]
+            strOut += genText1stock(dataOut)
     return (strOut, df, historyData)
 
 def graphEvolutionTitre(histData, data):
-    listData = [getValueDays(histData, 30 * months) for months in [12, 6, 3, 1, 1/30]] + [data['valueNow']]
+    listData = [getValueDays(histData, 30 * months) for months in [12, 6, 3, 1, 1/30, 0]]
     listData = np.array(listData) / listData[0] * 100
     dataFig = []
     dataFig.append({
@@ -180,12 +213,13 @@ def graphCashLock(df):
     fig = go.Figure(data=dataFig, layout={'title': 'Cash repartition'})
     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
     return fig
-def graphRendement(df):
-    selectBought = (df['boughtValue'].notna())
-    selectSold = (df['sellDate'].notna() & selectBought) == False
-    listData = list(df[selectSold]['netActualGain'])
-    listData.append(df[selectSold]['netActualGain'].sum())
-    xData = [df.loc[ind]['name'] + '\n' + '{:.2f} €'.format(df.loc[ind]['netActualGain']) for ind in df[selectSold].index]
+def graphRendement(df, method='sold'):
+    selection = (df['boughtValue'].notna())
+    if method == 'sold':
+        selection = (df['sellDate'].notna() & selection) == False
+    listData = list(df[selection]['netActualGain'])
+    listData.append(df[selection]['netActualGain'].sum())
+    xData = [df.loc[ind]['name'] + '\n' + '{:.2f} €'.format(df.loc[ind]['netActualGain']) for ind in df[selection].index]
     xData.append('Somme : {:.2f} €'.format(listData[-1]))
     dataFig = []
     dataFig.append({
