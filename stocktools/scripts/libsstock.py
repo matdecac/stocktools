@@ -5,17 +5,13 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import pandas as pd
-import yfinance as yf
-from yahoo_fin import stock_info as si
 from stockList import allStocks
 from copy import copy
-
-def getLiveValue(stockName):
-    return si.get_live_price(stockName)
+from updateDB import getStockData, HandleDB, getLastValue, getStockName
 
 def loadStocks(jsonFile):
     df = pd.read_json(jsonFile, orient='index')
-    df['valueNow'] = df['stockname'].apply(lambda x : getLiveValue(x))
+    df['valueNow'] = df['stockname'].apply(lambda x : getLastValue(x))
     if 'boughtValue' in df.columns:
         selectBought = (df['boughtValue'].notna())
         df.loc[selectBought, 'boughtDate'] = pd.to_datetime(df[selectBought]['boughtDate'], unit='ms')
@@ -53,32 +49,12 @@ def fillNameFromYF(df):
         df['name'] = df['stockname'].apply(lambda x : searchFullName(x))
     return df
 
-def getYFdate(df, startDate=date.today() - timedelta(days=365+41), stopDate=date.today()):
-    listStockNames = [df.loc[ind]['stockname'] for ind in df.index]
-
-    allStocksHist = yf.download(
-        listStockNames,
-        start=startDate, 
-        end=stopDate, 
-        progress=False,
-        group_by="ticker"
-    )
-    
-    stockData = []
-    for ind in range(len(listStockNames)):
-        if len(listStockNames) > 1:
-            stockData.append(allStocksHist[listStockNames[ind]].fillna(method='ffill'))
-        else:
-            stockData.append(allStocksHist.fillna(method='ffill'))
-        #stock['info'] = stock['ticker'].info
-    return stockData
-
 def computeIchimoku(d):
-    minDate = d.index[0]
-    maxDate = d.index[-1]
-    for ind in range(1, 52+1):
-        d = d.append(pd.Series(name=maxDate + timedelta(days=ind)))
+    minDate = np.min(d.index)
+    maxDate = np.max(d.index)
     for ind in range(1, 26+1):
+        d = d.append(pd.Series(name=maxDate + timedelta(days=ind)))
+    for ind in range(1, 52+1):
         d = d.append(pd.Series(name=minDate - timedelta(days=ind)))
     d = d.sort_index()
     # Tenkan-sen (Conversion Line): (9-period high + 9-period low)/2))
@@ -105,8 +81,10 @@ def computeIchimoku(d):
     return d
 
 def getValueDays(historyData, days):
-    result = historyData.iloc[historyData.index.get_loc(datetime.today() - timedelta(days=days),method='pad')]
+    #print(historyData)
     #pdb.set_trace()
+    result = historyData.iloc[historyData.index.get_loc(datetime.today() - timedelta(days=days),method='backfill')]
+    #
     return result['Close']
 def computeVar(dfSerie, histData, refDay=1):
     return getValueDays(histData, 0) / getValueDays(histData, refDay) - 1.0
@@ -116,54 +94,35 @@ def checkVarNeg(dfSerie, histData, refDay=1, percentVar=-0.05):
     return computeVar(dfSerie, histData, refDay) < percentVar
 def computeVarAndStatus(df, historyData, refDay=1, percentVarNeg=-0.05, percentVarPos=0.05):
     for ind in range(len(df)):
-        df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1Neg'] = checkVarNeg(df.iloc[ind], historyData[ind], refDay, percentVarNeg)
-        df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1Pos'] = checkVarPos(df.iloc[ind], historyData[ind], refDay, percentVarPos)
-        df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1day'] = computeVar(df.iloc[ind], historyData[ind], refDay)
+        historyData = getStockData(df.iloc[ind]['stockname'])
+        df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1Neg'] = checkVarNeg(df.iloc[ind], historyData, refDay, percentVarNeg)
+        df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1Pos'] = checkVarPos(df.iloc[ind], historyData, refDay, percentVarPos)
+        df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1day'] = computeVar(df.iloc[ind], historyData, refDay)
     return df
 
 
 def genText1stock(dataOut):
-    return  ('/stockinfo' + dataOut['stockname'].replace('.', '_') + ' ' + dataOut['name'] + ' var : {:.2f}%'.format(dataOut['var1day'] * 100)) + '\n'
-def checkVar(nbDays=1, fileJson='mystocks.json', which='all', stockName=None):
-    strOut = ''
-    df = loadStocks(fileJson)
-
-    df2 = df
-    if stockName is not None:
-        df2 = pd.DataFrame([{'stockname': stockName, 'name': stockName}])
-        df = df[df['stockname'] == df2.iloc[0]['stockname']]
-    elif 'sellValue' in df.columns:
-        #pdb.set_trace()
-        df = df[df['sellValue'].isna()]
-    
-    if len(df2) > 0:
-        df = df2
-    else:
-        df = fillNameFromYF(df)
-
-    df = df.drop_duplicates('stockname')
-    
+    return  ('/stockinfo' + dataOut['stockname'].replace('.', '_') + ' ' + getStockName(dataOut['stockname']) + ' var : {:.2f}%'.format(dataOut['var1day'] * 100)) + '\n'
+def checkVar(df, nbDays=1, which='all'):
     nbDaysGetData = nbDays
+    strOut = ''
     if nbDays < 4:
         nbDaysGetData = 4
-
-    historyData = getYFdate(
-        df, startDate=date.today() - timedelta(days=nbDaysGetData), stopDate=date.today() + timedelta(days=1)
-    )
-    if 'all' in which:
-        for data in computeVarAndStatus(df, historyData, nbDays).sort_values('var1day').index:
+    df = df.copy()
+    df = df.drop_duplicates(subset='stockname')
+    if 'all' == which:
+        for data in computeVarAndStatus(df, nbDays).sort_values('var1day').index:
             dataOut = df.loc[data]
             strOut += genText1stock(dataOut)
-    elif 'neg' in which:
-        for data in df[computeVarAndStatus(df, historyData, nbDays).sort_values('var1day')['var1Neg']].index:
+    elif 'neg' == which:
+        for data in df[computeVarAndStatus(df, nbDays).sort_values('var1day')['var1Neg']].index:
             dataOut = df.loc[data]
             strOut += genText1stock(dataOut)
-    elif 'pos' in which:
-        for data in df[computeVarAndStatus(df, historyData, nbDays).sort_values('var1day')['var1Pos']].index:
+    elif 'pos' == which:
+        for data in df[computeVarAndStatus(df, nbDays).sort_values('var1day')['var1Pos']].index:
             dataOut = df.loc[data]
             strOut += genText1stock(dataOut)
-    return (strOut, df, historyData)
-
+    return (strOut, df)
 def graphEvolutionTitre(histData, data):
     listData = [getValueDays(histData, 30 * months) for months in [12, 6, 3, 1, 1/30, 0]]
     listData = np.array(listData) / listData[0] * 100
@@ -231,7 +190,7 @@ def graphRendement(df, method='sold'):
     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
     return fig
 
-def graphIchimoku(stockSerie, stockHist):
+def graphIchimoku(stockSerie, stockHist, startDate=datetime.now() - timedelta(days=365), stopDate=datetime.now() + timedelta(days=31)):
     d = stockHist
     dataFig = []
     custom = d.copy()
@@ -321,7 +280,10 @@ def graphIchimoku(stockSerie, stockHist):
                 )
             ),
         })
-    fig = go.Figure(data=dataFig, layout={'title': str(stockSerie['name'].iloc[0])})
+    fig = go.Figure(data=dataFig, layout={
+        'title': str(stockSerie['name'].iloc[0]),
+        #'xaxis':{'range': [startDate, stopDate]}
+    })
     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
     
     return fig

@@ -7,11 +7,12 @@ import pandas as pd
 import plotly.graph_objects as go
 import pandas as pd
 from libsstock import (
-    loadStocks, getYFdate, computeIchimoku, fillNameFromYF, checkVar, graphEvolutionTitre,
+    loadStocks, computeIchimoku, fillNameFromYF, checkVar, graphEvolutionTitre,
     graphIchimoku, graphBestGain, graphWorseGain, graphCashLock, graphRendement
 )
 from plotly_tools import genIMGfromFile
 import telepot
+from updateDB import updateDB, getStockData
 
 def displayGraphValues(mybot, chat_id, msg):
     df = loadStocks('mystocks.json')
@@ -24,7 +25,12 @@ def sendVarIfprospects(mybot, chat_id, msg):
     sendVarIfJson(mybot, chat_id, 'stockprospects.json')
 
 def sendVarIfJson(mybot, chat_id, fileJson):
-    (strOut, dfData, historyData) = checkVar(1, fileJson)
+    (strOut, dfData) = checkVar(loadStocks(fileJson), 1, which='pos')
+    if len(strOut) > 0:
+        mybot.sendMessage(
+            chat_id, strOut
+        )
+    (strOut, dfData) = checkVar(loadStocks(fileJson), 1, which='neg')
     if len(strOut) > 0:
         mybot.sendMessage(
             chat_id, strOut
@@ -34,26 +40,27 @@ def genDataFromStock(mybot, chat_id, msg):
     # recall for generate graph over a year
     #pdb.set_trace()
     stockName = msg["text"].replace('/stockinfo','').replace('_', '.')
+    print('Generate data for ' + stockName)
+    mybot.sendMessage(
+        chat_id, 'Generate data for ' + stockName
+    )
     
-    
-    (strOut, dfData2, historyData) = checkVar(360, 'mystocks.json', which='all', stockName=stockName)
-    listStockNames = [dfData2.loc[ind]['stockname'] for ind in dfData2.index]
-    for ind in dfData2[dfData2['var1Neg']].index:
-        data=genIMGfromFile(graphEvolutionTitre(historyData[ind], dfData2.iloc[ind]), 'img.png', scale=1.3, width=800, height=500)
-        mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-        histo = computeIchimoku(historyData[ind])
-        data=genIMGfromFile(graphIchimoku(
-            dfData2[dfData2['stockname'] == listStockNames[ind]], histo
-        ), 'img.png', scale=1.3, width=800, height=500)
-        mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-    for ind in dfData2[dfData2['var1Pos']].index:
-        data=genIMGfromFile(graphEvolutionTitre(historyData[ind], dfData2.iloc[ind]), 'img.png', scale=1.3, width=800, height=500)
-        mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-        histo = computeIchimoku(historyData[ind])
-        data=genIMGfromFile(graphIchimoku(
-            dfData2[dfData2['stockname'] == listStockNames[ind]], histo
-        ), 'img.png', scale=1.3, width=800, height=500)
-        mybot.sendPhoto(chat_id, open('img.png', 'rb'))
+    dfData = loadStocks('stockprospects.json')
+    dfData = dfData.loc[dfData['stockname'] == stockName]
+    histoData = getStockData(stockName)
+    data=genIMGfromFile(graphEvolutionTitre(histoData, dfData.iloc[0]), 'img.png', scale=1.3, width=800, height=500)
+    mybot.sendPhoto(chat_id, open('img.png', 'rb'))
+    histo = computeIchimoku(histoData)
+    startDate=date.today() - timedelta(days=60)
+    data=genIMGfromFile(graphIchimoku(
+        dfData, histo[histo.index > startDate]
+    ), 'img.png', scale=1.3, width=800, height=500)
+    mybot.sendPhoto(chat_id, open('img.png', 'rb'))
+    startDate=date.today() - timedelta(days=360)
+    data=genIMGfromFile(graphIchimoku(
+        dfData, histo[histo.index > startDate]
+    ), 'img.png', scale=1.3, width=800, height=500)
+    mybot.sendPhoto(chat_id, open('img.png', 'rb'))
 
 def listMenuItems(mybot, chat_id, msg):
     mybot.sendMessage(
@@ -71,18 +78,21 @@ availableCommands = {
 }
 
 def handle(msg):
-    global mybot
-    content_type, chat_type, chat_id = telepot.glance(msg)
-    msgDecoded = False
-    
-    if content_type == 'text':
-        for cmd, value in availableCommands.items():
-            if '/' + cmd in msg["text"]:
-                msgDecoded = True
-                value['fct'](mybot, chat_id, msg)
-    if not msgDecoded:
-        mybot.sendMessage(chat_id, "Message '{}' non géré, essayez /menu.".format(msg["text"]))
+    #try:
+        global mybot
+        content_type, chat_type, chat_id = telepot.glance(msg)
+        msgDecoded = False
 
+        if content_type == 'text':
+            for cmd, value in availableCommands.items():
+                if '/' + cmd in msg["text"]:
+                    msgDecoded = True
+                    value['fct'](mybot, chat_id, msg)
+        if not msgDecoded:
+            mybot.sendMessage(chat_id, "Message '{}' non géré, essayez /menu.".format(msg["text"]))
+    #except Exception as e: 
+    #    print(e)
+    #    mybot.sendMessage(chat_id, "Error : \n" + str(e))
 
 
 def main():
@@ -97,14 +107,22 @@ def main():
         '''
     )
     while(1):
-        thisHourSend = datetime.today().hour
-        if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
-            sendVarIf(mybot, bot_chatID)
-            sendVarIfprospects(mybot, bot_chatID)
-        print('Sleeping 15 minutes')
-        time.sleep(60 * 15)
+        updateDB()
+        try:
+            thisHourSend = datetime.today().hour
+            if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
+                sendVarIf(mybot, bot_chatID, None)
+                #sendVarIfprospects(mybot, bot_chatID, None)
+        except:
+            pass
+        print('Sleeping 5 minutes')
+        time.sleep(60 * 5)
 
 if __name__ == '__main__':
     main()
+
+
+
+
 
 
