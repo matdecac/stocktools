@@ -28,7 +28,7 @@ class StockDay(Base):
 class StockIntraDay(Base):
     __tablename__ = 'stockintraday'
     id = Column(Integer, primary_key=True)
-    stockname = Column(String, nullable=False, unique=True)
+    stockname = Column(String, nullable=False)
     timestamp = Column(DateTime, nullable=False)
     dateadded = Column(DateTime)
     price = Column(Float)

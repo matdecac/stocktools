@@ -98,5 +98,13 @@
     "24":{
         "stockname":"ALERS.PA",
         "name":"EUROBIO SCIENT"
+    },
+    "25":{
+        "stockname":"TKTT.PA",
+        "name":"TARKETT"
+    },
+    "26":{
+        "stockname":"SU.PA",
+        "name":"SCHNEIDER ELECTRIC"
     }
 }

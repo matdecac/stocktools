@@ -20,6 +20,19 @@ def getStockName(stockname):
     df = pd.read_json('stockprospects.json', orient='index')
     return str(df[df['stockname'] == stockname]['name'].iloc[0])
 
+def searchFullName(stockName):
+    try:
+        return yf.Ticker(stockName).info['shortName']
+    except:
+        return np.NaN
+
+def fillNameFromYF(df):
+    if 'name' in df.columns:
+        df.loc[df['name'].isna(), 'name'] = df[df['name'].isna()]['stockname'].apply(lambda x : searchFullName(x))
+    else:
+        df['name'] = df['stockname'].apply(lambda x : searchFullName(x))
+    return df
+
 def addStock(newStockname, jsonToUpdate='stockprospects.json'):
     df = pd.read_json(jsonToUpdate, orient='index')
     listStockNamesJSON = [df.loc[ind]['stockname'] for ind in df.index]
@@ -53,7 +66,7 @@ def getStockData(stockname):
 
 def getStockIntradayData(stockname):
     handleDB = HandleDB()
-    queryData = handleDB.session.query(StockIntraDay).filter(StockDay.stockname==stockname).order_by(desc(StockDay.datestamp))
+    queryData = handleDB.session.query(StockIntraDay).filter(StockIntraDay.stockname==stockname).order_by(desc(StockIntraDay.timestamp))
     df = pd.read_sql(queryData.statement, handleDB.engine)
     handleDB.close()
     return df
@@ -124,6 +137,8 @@ def updateDB(daysHisto=10):
                 handleDB.session.commit()
         else:
             historyData[ind]
+            print('no data for this stock')
+            print(historyData[ind])
         #display(historyData[ind])
     for ind in range(len(listStockNames)):
         output = historyData[ind].to_dict('records')
@@ -139,6 +154,7 @@ def updateDB(daysHisto=10):
         stockIntraDay.dateadded = datetime.now()
         stockIntraDay.price = dataRes.priceClose
         handleDB.session.add(stockIntraDay)
+        handleDB.session.commit()
     handleDB.session.close()
 
 

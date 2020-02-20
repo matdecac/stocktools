@@ -95,7 +95,7 @@
         "boughtFrais":1.99,
         "sellFrais":1.99,
         "name":"NOVACYT",
-        "sellValue":null,
-        "sellDate":null
+        "sellValue":1.03,
+        "sellDate":1581897600000.0
     }
 }

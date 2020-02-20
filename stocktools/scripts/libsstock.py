@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import pandas as pd
 from stockList import allStocks
 from copy import copy
-from updateDB import getStockData, HandleDB, getLastValue, getStockName
+from updateDB import getStockData, HandleDB, getLastValue, getStockName, getStockIntradayData
 
 def loadStocks(jsonFile):
     df = pd.read_json(jsonFile, orient='index')
@@ -35,18 +35,6 @@ def loadStocks(jsonFile):
         df.loc[selectBoughtNotSold, 'netActualLock'] = df[selectBoughtNotSold]['valueNow'] * df[selectBoughtNotSold]['boughtQ']
         if 'sellDate' in df.columns:
             df['sellDate'] = pd.to_datetime(df['sellDate'], unit='ms')
-    return df
-
-def searchFullName(stockName):
-    try:
-        return yf.Ticker(stockName).info['shortName']
-    except:
-        return np.NaN
-def fillNameFromYF(df):
-    if 'name' in df.columns:
-        df.loc[df['name'].isna(), 'name'] = df[df['name'].isna()]['stockname'].apply(lambda x : searchFullName(x))
-    else:
-        df['name'] = df['stockname'].apply(lambda x : searchFullName(x))
     return df
 
 def computeIchimoku(d):
@@ -81,6 +69,10 @@ def computeIchimoku(d):
     return d
 
 def getValueDays(historyData, days):
+    refDate = (datetime.today() - timedelta(days=days))
+    # In case we do not have enought elements
+    if len(historyData[historyData.index <= refDate.date()]) == 0:
+        return historyData.iloc[-1]['Close']
     #print(historyData)
     #pdb.set_trace()
     result = historyData.iloc[historyData.index.get_loc(datetime.today() - timedelta(days=days),method='backfill')]
@@ -135,7 +127,21 @@ def graphEvolutionTitre(histData, data):
     fig = go.Figure(data=dataFig, layout={'title': data['name'] + ' Progression du titre sur 1 an'})
     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
     return fig
-
+def graphEvolutionIntraday(
+    stockname, dateStart=datetime.now() - timedelta(days=1), dateStop=datetime.now() + timedelta(hours=2)
+):
+    data = getStockIntradayData(stockname)
+    data = data[data['timestamp'] > dateStart]
+    data = data[data['timestamp'] < dateStop]
+    dataFig = []
+    dataFig.append({
+            'x': data['timestamp'],
+            'y': data['price'],
+            'type': 'scatter',
+    })
+    fig = go.Figure(data=dataFig, layout={'title': getStockName(stockname) + ' Intraday'})
+    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
+    return fig
 def graphBestGain(df):
     dataFig = []
     dataFig.append({
