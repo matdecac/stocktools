@@ -1,5 +1,7 @@
 import os
 import json
+import time
+import logging
 from datetime import date, datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -7,6 +9,7 @@ from libs.datamodel import StockDay, StockIntraDay
 from sqlalchemy import create_engine, desc, asc
 from sqlalchemy.orm import scoped_session, sessionmaker
 import yfinance as yf
+
 
 def checkMissingStock():
     jsonToUpdate = 'mystocks.json'
@@ -64,11 +67,51 @@ def getStockData(stockname):
     df.index = df['datestamp']
     return df
 
+def ohlcFromDFparms(test, openC, highC, lowC, closeC, adfCloseC):
+    if len(test) > 0:
+        return pd.Series({
+            'Open': test.iloc[0][openC],
+            'High': np.max(test[highC]),
+            'Low': np.min(test[lowC]),
+            'Close': test.iloc[-1][closeC],
+            'Adj Close': test.iloc[-1][adfCloseC],
+        })
+    else:
+        return pd.Series({
+            'Open': None,
+            'High': None,
+            'Low': None,
+            'Close': None,
+            'Adj Close': None,
+        })
+def ohlcFromPricedf(test):
+    return ohlcFromDFparms(test, 'price', 'price', 'price', 'price', 'price')
+def ohlcFromOHLCdf(test):
+    return ohlcFromDFparms(test, 'Open', 'High', 'Low', 'Close', 'Adj Close')
+
+def createOHLC(df, freq=5, unit='T'):
+    if unit not in ['T', 'H', 'D', 'W', 'M']:
+        logging.error('unit ' + str(unit) + ' not allowed')
+        return df
+    newDF = df.sort_index().groupby(pd.Grouper(freq=str(freq)+str(unit))).apply(ohlcFromPricedf)
+    newDF.index = newDF.index.to_pydatetime()
+    return newDF.dropna()
+
+def updateOHLC(df, freq=5, unit='T'):
+    if unit not in ['T', 'H', 'D', 'W', 'M']:
+        logging.error('unit ' + str(unit) + ' not allowed')
+        return df
+    df.index = df.index.astype('M8[ns]') + timedelta(seconds=1)
+    newDF = df.sort_index().groupby(pd.Grouper(freq=str(freq)+str(unit))).apply(ohlcFromOHLCdf)
+    newDF.index = newDF.index.to_pydatetime()
+    return newDF.dropna()
+
 def getStockIntradayData(stockname):
     handleDB = HandleDB()
     queryData = handleDB.session.query(StockIntraDay).filter(StockIntraDay.stockname==stockname).order_by(desc(StockIntraDay.timestamp))
     df = pd.read_sql(queryData.statement, handleDB.engine)
     handleDB.close()
+    df.index = df['timestamp']
     return df
 
 
@@ -89,14 +132,8 @@ class HandleDB():
     def close(self):
         self.session.close()
 
-def updateDB(daysHisto=10):
-    df = pd.read_json('stockprospects.json', orient='index')
-    listStockNames = [df.loc[ind]['stockname'] for ind in df.index]
-
-    startDate=date.today() - timedelta(days=daysHisto)
-    stopDate=date.today() + timedelta(days=1)
-
-    allStocksHist = yf.download(
+def getYFdata(listStockNames, startDate, stopDate):
+    return yf.download(
         listStockNames,
         start=startDate, 
         end=stopDate, 
@@ -104,6 +141,37 @@ def updateDB(daysHisto=10):
         group_by="ticker"
     )
 
+
+def updateDBintraday():
+    df = pd.read_json('stockprospects.json', orient='index')
+    listStockNames = [df.loc[ind]['stockname'] for ind in df.index]
+    start_time = time.time()
+    startDate=date.today() - timedelta(days=0)
+    stopDate=date.today() + timedelta(days=1)
+    dataResAll = getYFdata(listStockNames, startDate, stopDate)
+    handleDB = HandleDB()
+    for ind in range(len(listStockNames)):
+        dataRes = dataResAll[listStockNames[ind]].iloc[-1]
+        if not np.isnan(dataRes['Close']):
+            stockIntraDay = StockIntraDay()
+            stockIntraDay.stockname = listStockNames[ind]
+            stockIntraDay.timestamp = datetime.now()
+            stockIntraDay.dateadded = datetime.now()
+            stockIntraDay.price = dataRes['Close']
+            handleDB.session.add(stockIntraDay)
+            handleDB.session.commit()
+            logging.debug('Update for ' + listStockNames[ind] + ' value : {:.2f} €'.format(dataRes['Close']))
+    handleDB.session.close()
+    logging.info("Intraday update in %s seconds" % (time.time() - start_time))
+
+def updateDB(daysHisto=10):
+    logger = logging.getLogger()
+    df = pd.read_json('stockprospects.json', orient='index')
+    start_time = time.time()
+    listStockNames = [df.loc[ind]['stockname'] for ind in df.index]
+    startDate=date.today() - timedelta(days=daysHisto)
+    stopDate=date.today() + timedelta(days=1)
+    allStocksHist = getYFdata(listStockNames, startDate, stopDate)
     historyData = []
     for ind in range(len(listStockNames)):
         if len(listStockNames) > 1:
@@ -145,17 +213,7 @@ def updateDB(daysHisto=10):
         handleDB.session.bulk_insert_mappings(StockDay, output)
         handleDB.session.commit()
     handleDB.session.close()
-    handleDB = HandleDB()
-    for ind in range(len(listStockNames)):
-        dataRes = handleDB.session.query(StockDay).filter(StockDay.stockname==listStockNames[ind]).order_by(desc(StockDay.datestamp)).first()
-        if dataRes is not None:
-            stockIntraDay = StockIntraDay()
-            stockIntraDay.stockname = dataRes.stockname
-            stockIntraDay.timestamp = datetime.now()
-            stockIntraDay.dateadded = datetime.now()
-            stockIntraDay.price = dataRes.priceClose
-            handleDB.session.add(stockIntraDay)
-            handleDB.session.commit()
-    handleDB.session.close()
+    logging.info("Daily update in %s seconds" % (time.time() - start_time))
+
 
 

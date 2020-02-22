@@ -1,6 +1,8 @@
 import os
 import json
+import threading
 import time
+import logging
 from datetime import date, datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -13,7 +15,20 @@ from libsstock import (
 )
 from plotly_tools import genIMGfromFile
 import telepot
-from updateDB import updateDB, getStockData
+from updateDB import updateDB, getStockData, updateDBintraday
+
+def loopUpdateDB():
+    while(1):
+        #if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
+        updateDB()
+        logging.info('Sleeping 5 minutes')
+        time.sleep(60 * 5)
+def loopUpdateDBintraday():
+    while(1):
+        #if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
+        updateDBintraday()
+        logging.info('Sleeping 0.5 minutes')
+        time.sleep(60 * 0.5)
 
 def displayGraphValues(mybot, chat_id, msg):
     df = loadStocks('mystocks.json')
@@ -121,8 +136,18 @@ def main():
         Bonjour, bienvenue sur le bot financier, essayer /menu pour les fonctions.
         '''
     )
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='(%(threadName)-10s) %(message)s',
+    )
+
+
+    dbUpdate = threading.Thread(name='dbupdate', target=loopUpdateDB, daemon=True)
+    dbUpdateIntraday = threading.Thread(name='dbupdateintraday', target=loopUpdateDBintraday, daemon=True)
+    dbUpdate.start()
+    dbUpdateIntraday.start()
+
     while(1):
-        updateDB()
         try:
             thisHourSend = datetime.today().hour
             if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):

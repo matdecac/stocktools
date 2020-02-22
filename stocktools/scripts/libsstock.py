@@ -38,12 +38,14 @@ def loadStocks(jsonFile):
     return df
 
 def computeIchimoku(d):
-    minDate = np.min(d.index)
-    maxDate = np.max(d.index)
+    # compute the average variation between points to create new points
+    res = np.abs(np.mean((d.index[1:-1] - d.index[0:-2]).to_numpy()))
+    minDate = np.datetime64((np.min(d.index)))
+    maxDate = np.datetime64((np.max(d.index)))
     for ind in range(1, 26+1):
-        d = d.append(pd.Series(name=maxDate + timedelta(days=ind)))
+        d = d.append(pd.Series(name=maxDate + ind * res))
     for ind in range(1, 52+1):
-        d = d.append(pd.Series(name=minDate - timedelta(days=ind)))
+        d = d.append(pd.Series(name=minDate - ind * res))
     d = d.sort_index()
     # Tenkan-sen (Conversion Line): (9-period high + 9-period low)/2))
     nine_period_high = d['High'].rolling(window= 9).max()
@@ -196,7 +198,7 @@ def graphRendement(df, method='sold'):
     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
     return fig
 
-def graphIchimoku(stockSerie, stockHist, startDate=datetime.now() - timedelta(days=365), stopDate=datetime.now() + timedelta(days=31)):
+def graphIchimoku(stockHist):
     d = stockHist
     dataFig = []
     custom = d.copy()
@@ -237,28 +239,34 @@ def graphIchimoku(stockSerie, stockHist, startDate=datetime.now() - timedelta(da
         dataFig.append(
             {'y': d[serieN], 'x':d.index, 'name': serieN, 'opacity': 1, 'line': {'width':1}}
         )
+    return dataFig
 
 
-    dataFig.append({
-            'x': d.index,
-            'open': d['Open'],
-            'high': d['High'],
-            'low': d['Low'],
-            'close': d['Close'],
+def graphBougies(stockHist):
+    return [{
+            'x': stockHist.index,
+            'open': stockHist['Open'],
+            'high': stockHist['High'],
+            'low': stockHist['Low'],
+            'close': stockHist['Close'],
             'type': 'candlestick',
             'name': 'candlestick'
-    })
+    }]
+
+def graphSelfData(stockSerie):
+    dataFig = []
     if 'boughtDate' in stockSerie.columns and stockSerie['boughtDate'].notna().values[0]:
-        xData = [
-            stockSerie['boughtDate'].values[0].astype('M8[D]').astype('O'),
-            stockSerie['sellDate'].values[0] if stockSerie['sellDate'].notna().values[0] else np.datetime64('now')
-        ]
-        yData = [stockSerie['boughtNetValue'].values[0], stockSerie['boughtNetValue'].values[0]]
-        dataFig.append({
-            'x': xData, 
-            'y': yData, 
-            'name': 'Gain barrier', 'type': 'scatter', 'mode': 'lines'
-        })
+        for ind in range(len(stockSerie)):
+            xData = [
+                stockSerie['boughtDate'].values[ind].astype('M8[D]').astype('O') + timedelta(seconds=1),
+                stockSerie['sellDate'].values[ind].astype('M8[D]').astype('O') if stockSerie['sellDate'].notna().values[ind] else datetime.now()
+            ]
+            yData = [stockSerie['boughtNetValue'].values[ind], stockSerie['boughtNetValue'].values[ind]]
+            dataFig.append({
+                'x': xData, 
+                'y': yData, 
+                'name': 'Gain barrier', 'type': 'scatter', 'mode': 'lines'
+            })
         dataFig.append({
             'x': stockSerie['boughtDate'], 
             'y': stockSerie['boughtValue'], 
@@ -286,10 +294,18 @@ def graphIchimoku(stockSerie, stockHist, startDate=datetime.now() - timedelta(da
                 )
             ),
         })
+    return dataFig
+
+
+def graphGenericStock(stockSerie, stockHist, stockname=''):
+    dataFig = []
+    dataFig += graphIchimoku(stockHist)
+    dataFig += graphBougies(stockHist)
+    if len(stockSerie) > 0:
+        dataFig += graphSelfData(stockSerie)
     fig = go.Figure(data=dataFig, layout={
-        'title': str(stockSerie['name'].iloc[0]),
+        'title': str(stockname),
         #'xaxis':{'range': [startDate, stopDate]}
     })
     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
-    
     return fig
