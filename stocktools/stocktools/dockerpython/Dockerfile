@@ -1,7 +1,8 @@
-FROM archlinux/base:latest
-RUN pacman -Syu --noconfirm && \
-    pacman -S --noconfirm gcc python3 python-pip && \
-    rm -rf /var/cache/pacman/pkg/ && \
+FROM ubuntu:rolling
+RUN apt-get update && \ 
+    apt-get upgrade -y && \
+    apt-get install -y gcc python3 python-pip python3-venv && \
+    rm -rf /var/lib/apt/lists/* && \
     rm /bin/sh && ln -s /bin/bash /bin/sh && \
     useradd user --home /home/user/ --create-home --shell /bin/bash --uid 994
 USER user
