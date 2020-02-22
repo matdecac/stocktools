@@ -148,13 +148,14 @@ def updateDB(daysHisto=10):
     handleDB = HandleDB()
     for ind in range(len(listStockNames)):
         dataRes = handleDB.session.query(StockDay).filter(StockDay.stockname==listStockNames[ind]).order_by(desc(StockDay.datestamp)).first()
-        stockIntraDay = StockIntraDay()
-        stockIntraDay.stockname = dataRes.stockname
-        stockIntraDay.timestamp = dataRes.datestamp
-        stockIntraDay.dateadded = datetime.now()
-        stockIntraDay.price = dataRes.priceClose
-        handleDB.session.add(stockIntraDay)
-        handleDB.session.commit()
+        if dataRes is not None:
+            stockIntraDay = StockIntraDay()
+            stockIntraDay.stockname = dataRes.stockname
+            stockIntraDay.timestamp = datetime.now()
+            stockIntraDay.dateadded = datetime.now()
+            stockIntraDay.price = dataRes.priceClose
+            handleDB.session.add(stockIntraDay)
+            handleDB.session.commit()
     handleDB.session.close()
 
 
