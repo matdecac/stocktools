@@ -39,7 +39,10 @@ def fillNameFromYF(df):
 def addStock(newStockname, jsonToUpdate='stockprospects.json'):
     df = pd.read_json(jsonToUpdate, orient='index')
     listStockNamesJSON = [df.loc[ind]['stockname'] for ind in df.index]
-    if newStockname not in listStockNamesJSON:
+    if (
+        newStockname not in listStockNamesJSON and
+        len(getYFdata(newStockname, startDate=datetime.now()-timedelta(days=5), stopDate=datetime.now())) > 0
+    ):
         df = df.append({'stockname': newStockname}, ignore_index=True)
         df = fillNameFromYF(df)
         df.to_json(jsonToUpdate, orient='index', indent=4)
@@ -90,6 +93,9 @@ def ohlcFromOHLCdf(test):
     return ohlcFromDFparms(test, 'Open', 'High', 'Low', 'Close', 'Adj Close')
 
 def createOHLC(df, freq=5, unit='T'):
+    if len(df) == 0:
+        return df
+    #assert (len(df) > 0), "Len of DF is 0"
     if unit not in ['T', 'H', 'D', 'W', 'M']:
         logging.error('unit ' + str(unit) + ' not allowed')
         return df
@@ -98,6 +104,9 @@ def createOHLC(df, freq=5, unit='T'):
     return newDF.dropna()
 
 def updateOHLC(df, freq=5, unit='T'):
+    if len(df) == 0:
+        return df
+    #assert (len(df) > 0), "Len of DF is 0"
     if unit not in ['T', 'H', 'D', 'W', 'M']:
         logging.error('unit ' + str(unit) + ' not allowed')
         return df
@@ -205,8 +214,8 @@ def updateDB(daysHisto=10):
                 handleDB.session.commit()
         else:
             historyData[ind]
-            print('no data for this stock')
-            print(historyData[ind])
+            print('no data for this stock, adding all')
+            #print(historyData[ind])
         #display(historyData[ind])
     for ind in range(len(listStockNames)):
         output = historyData[ind].to_dict('records')

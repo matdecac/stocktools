@@ -1,14 +1,12 @@
 import unittest
-from libsstock import loadStocks, searchFullName, computeIchimoku, getValueDays, computeVar, checkVarPos, checkVarNeg, computeVarAndStatus, genText1stock, checkVar
+from libsstock import loadStocks, computeIchimoku, getValueDays, computeVar, checkVarPos, checkVarNeg, computeVarAndStatus, genText1stock, checkVar, graphDataForStock
 from updateDB import getStockData
 import pandas as pd
+from datetime import timedelta
 
 class TestLibsStockMethods(unittest.TestCase):
     def test_loadStocks(self):
         loadStocks('mystocks.json')
-        self.assertTrue(True)
-    def test_searchFullName(self):
-        searchFullName('SO.PA')
         self.assertTrue(True)
     def test_computeIchimoku(self):
         computeIchimoku(getStockData('SO.PA'))
@@ -33,6 +31,10 @@ class TestLibsStockMethods(unittest.TestCase):
         self.assertTrue(True)
     def test_checkVar(self):
         checkVar(pd.DataFrame([{'stockname': 'SO.PA'}]), 5, which='all')
+        self.assertTrue(True)
+    def test_checkGraphDataForStock(self):
+        graphDataForStock('BTC-EUR', freq=1, unit='H', histoDepth=timedelta(days=60))
+        graphDataForStock('BTC-EUR', freq=5, unit='D', histoDepth=timedelta(days=60))
         self.assertTrue(True)
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@ import pandas as pd
 from libsstock import (
     loadStocks, computeIchimoku, checkVar, graphEvolutionTitre,
     graphIchimoku, graphBestGain, graphWorseGain, graphCashLock, graphRendement,
-    graphEvolutionIntraday
+    graphEvolutionIntraday, graphDataForStock
 )
 from plotly_tools import genIMGfromFile
 import telepot
@@ -45,9 +45,20 @@ def sendVarIfprospects(mybot, chat_id, msg):
 def sendVarIfprospectsALL(mybot, chat_id, msg):
     sendVarIfJsonALL(mybot, chat_id, 'stockprospects.json')
 
+
 def sendVarIfJson(mybot, chat_id, fileJson):
-    (strOut, dfData) = checkVar(loadStocks(fileJson), 1, which='pos')
-    (strOut2, dfData) = checkVar(loadStocks(fileJson), 1, which='neg')
+    df = loadStocks(fileJson)
+    if "netActualGain" in df.columns:
+        df = df[df['sellDate'].isna()]
+    else:
+        df = df.drop_duplicates(subset='stockname')
+    (strOut, dfData) = checkVar(df, 1, which='pos')
+    df = loadStocks(fileJson)
+    if "netActualGain" in df.columns:
+        df = df[df['sellDate'].isna()]
+    else:
+        df = df.drop_duplicates(subset='stockname')
+    (strOut2, dfData) = checkVar(df, 1, which='neg')
     if len(strOut + strOut2) > 0:
         mybot.sendMessage(
             chat_id, strOut + strOut2
@@ -55,7 +66,12 @@ def sendVarIfJson(mybot, chat_id, fileJson):
 
         
 def sendVarIfJsonALL(mybot, chat_id, fileJson):
-    (strOut, dfData) = checkVar(loadStocks(fileJson), 1, which='all')
+    df = loadStocks(fileJson)
+    if "netActualGain" in df.columns:
+        df = df[df['sellDate'].isna()]
+    else:
+        df = df.drop_duplicates(subset='stockname')
+    (strOut, dfData) = checkVar(df, 1, which='all')
     if len(strOut) > 0:
         mybot.sendMessage(
             chat_id, strOut
@@ -69,28 +85,18 @@ def genDataFromStock(mybot, chat_id, msg):
     mybot.sendMessage(
         chat_id, 'Generate data for ' + stockName
     )
+    graphDataA = []
+    graphDataA.append(graphEvolutionTitre(stockName))
+    graphDataA.append(graphDataForStock(stockName, freq=1, unit='W', histoDepth=timedelta(days=360)))
+    graphDataA.append(graphDataForStock(stockName, freq=1, unit='D', histoDepth=timedelta(days=60)))
+    graphDataA.append(graphDataForStock(stockName, freq=5, unit='T', histoDepth=timedelta(days=1)))
+    for graphData in graphDataA:
+        if graphData is not None:
+            genIMGfromFile(graphData, 'img.png', scale=1.3, width=800, height=500)
+            mybot.sendPhoto(chat_id, open('img.png', 'rb'))
+        else:
+            mybot.sendMessage(chat_id, 'Certains graphes n\'ont pas pu être généré')
     
-    dfData = loadStocks('stockprospects.json')
-    dfData = dfData.loc[dfData['stockname'] == stockName]
-    histoData = getStockData(stockName)
-    data=genIMGfromFile(graphEvolutionTitre(histoData, dfData.iloc[0]), 'img.png', scale=1.3, width=800, height=500)
-    mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-    histo = computeIchimoku(histoData)
-    startDate=date.today() - timedelta(days=60)
-    data=genIMGfromFile(graphIchimoku(
-        dfData, histo[histo.index > startDate]
-    ), 'img.png', scale=1.3, width=800, height=500)
-    mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-    startDate=date.today() - timedelta(days=360)
-    data=genIMGfromFile(graphIchimoku(
-        dfData, histo[histo.index > startDate]
-    ), 'img.png', scale=1.3, width=800, height=500)
-    mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-    startDate=date.today() - timedelta(days=360)
-    data=genIMGfromFile(graphEvolutionIntraday(stockName), 'img.png', scale=1.3, width=800, height=500)
-    mybot.sendPhoto(chat_id, open('img.png', 'rb'))
-    
-
 
 def listMenuItems(mybot, chat_id, msg):
     mybot.sendMessage(

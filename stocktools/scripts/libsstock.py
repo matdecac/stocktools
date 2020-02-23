@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import pandas as pd
 from stockList import allStocks
 from copy import copy
-from updateDB import getStockData, HandleDB, getLastValue, getStockName, getStockIntradayData
+from updateDB import getStockData, HandleDB, getLastValue, getStockName, getStockIntradayData, updateOHLC, createOHLC
 
 def loadStocks(jsonFile):
     df = pd.read_json(jsonFile, orient='index')
@@ -94,16 +94,23 @@ def computeVarAndStatus(df, historyData, refDay=1, percentVarNeg=-0.05, percentV
         df.loc[df['stockname'] == df.iloc[ind]['stockname'], 'var1day'] = computeVar(df.iloc[ind], historyData, refDay)
     return df
 
-
+def gentTextOwnStock(dataOut):
+    if "netActualGain" in dataOut.index and not np.isnan(dataOut['netActualGain']):
+        return ", Net gain : {:.2f} €".format(dataOut['netActualGain']) + ' / ' +  "{:.1f} %".format(dataOut['netActualGainPercent'])
+    else:
+        return ""
 def genText1stock(dataOut):
-    return  ('/stockinfo' + dataOut['stockname'].replace('.', '_') + ' ' + getStockName(dataOut['stockname']) + ' var : {:.2f}%'.format(dataOut['var1day'] * 100)) + '\n'
+    return  (
+        '/stockinfo' + dataOut['stockname'].replace('.', '_') + ' ' +
+        getStockName(dataOut['stockname']) +
+        ' var : {:.2f}%'.format(dataOut['var1day'] * 100)) + gentTextOwnStock(dataOut) + '\n'
+
 def checkVar(df, nbDays=1, which='all'):
     nbDaysGetData = nbDays
     strOut = ''
     if nbDays < 4:
         nbDaysGetData = 4
     df = df.copy()
-    df = df.drop_duplicates(subset='stockname')
     if 'all' == which:
         for data in computeVarAndStatus(df, nbDays).sort_values('var1day').index:
             dataOut = df.loc[data]
@@ -117,7 +124,9 @@ def checkVar(df, nbDays=1, which='all'):
             dataOut = df.loc[data]
             strOut += genText1stock(dataOut)
     return (strOut, df)
-def graphEvolutionTitre(histData, data):
+def graphEvolutionTitre(stockname):
+    data = loadStocks('mystocks.json')
+    histData = getStockData(stockname)
     listData = [getValueDays(histData, 30 * months) for months in [12, 6, 3, 1, 1/30, 0]]
     listData = np.array(listData) / listData[0] * 100
     dataFig = []
@@ -126,7 +135,7 @@ def graphEvolutionTitre(histData, data):
             'y': listData,
             'type': 'bar',
     })
-    fig = go.Figure(data=dataFig, layout={'title': data['name'] + ' Progression du titre sur 1 an'})
+    fig = go.Figure(data=dataFig, layout={'title': stockname + ' Progression du titre sur 1 an'})
     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
     return fig
 def graphEvolutionIntraday(
@@ -309,3 +318,34 @@ def graphGenericStock(stockSerie, stockHist, stockname=''):
     })
     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
     return fig
+
+def getTimeDeltaFromSettings(freq=1, unit='D'):
+    if unit not in ['T', 'H', 'D', 'W', 'M']:
+        return False
+    unitDict = {
+        'T': timedelta(minutes=1),
+        'H': timedelta(hours=1),
+        'D': timedelta(days=1),
+        'W': timedelta(days=5),
+        'M': timedelta(days=31),
+    }
+    return unitDict[unit] * freq * (52 + 27)
+
+
+def graphDataForStock(stockname, freq=1, unit='D', histoDepth=timedelta(days=60)):
+    df = loadStocks('mystocks.json')
+    if unit in ['T', 'H']:
+        historyData = getStockIntradayData(stockname)
+        historyData = createOHLC(historyData, freq=freq, unit=unit)
+    else:
+        historyData = getStockData(stockname)
+        historyData = updateOHLC(historyData, freq=freq, unit=unit)
+    if len(historyData) > 0:
+        startDate=datetime.now() - histoDepth
+        historyData = historyData[historyData.index > startDate - getTimeDeltaFromSettings(freq, unit)]
+        print(getTimeDeltaFromSettings(freq, unit))
+        histo = computeIchimoku(historyData)
+        histo = histo[histo.index > startDate]
+        return graphGenericStock(df[(df['stockname'] == stockname) & (df['boughtDate'] > datetime.now() - histoDepth)], histo, stockname=stockname)
+    else:
+        return None

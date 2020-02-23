@@ -26,8 +26,7 @@ from dash.exceptions import PreventUpdate
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 from libsstock import (
-    loadStocks, getYFdate, computeIchimoku, fillNameFromYF,
-    graphIchimoku
+    graphDataForStock
 )
 
 jsonToUpdate = 'stockprospects.json'
@@ -70,7 +69,7 @@ app.layout = dbc.Container(fluid=True, children=[
                 dbc.Col([
                     dcc.DatePickerSingle(
                         id='choose-date-start',
-                        date=date.today() - timedelta(days=365+41),
+                        date=date.today() - timedelta(days=365),
                         display_format='D/M/Y',
                         month_format='D/M/Y',
                         placeholder='D/M/Y',
@@ -78,14 +77,18 @@ app.layout = dbc.Container(fluid=True, children=[
                     ),
                 ], md=2, xs=12),
                 dbc.Col([
-                    dcc.DatePickerSingle(
-                        id='choose-date-stop',
-                        date=date.today() + timedelta(days=1),
-                        display_format='D/M/Y',
-                        month_format='D/M/Y',
-                        placeholder='D/M/Y',
-                        className="dash-bootstrap",
+                    dcc.Dropdown(
+                        id='choose-date-unit',
+                        options=[{'label':label, 'value':value} for value, label in {
+                            'T': 'Minutes', 'H': 'Heures', 'D': 'Jours', 'W': 'Semaines', 'M': 'Mois'
+                        }.items()],
+                        value='D',
+                        placeholder="Choisir Base de temps",
+                        multi=False,
                     ),
+                ], md=2, xs=12),
+                dbc.Col([
+                    dbc.Input(id='choose-date-freq', type="number", min=0, max=31, step=1, value=1),
                 ], md=2, xs=12),
             ], align="center", justify="center"),
         ], md=10, xs=12),
@@ -131,28 +134,23 @@ def update_options(value):
     [
         Input("text-plot-stock", "value"),
         Input('choose-date-start', 'date'),
-        Input('choose-date-stop', 'date'),
+        Input('choose-date-unit', 'value'),
+        Input('choose-date-freq', 'value'),
+        
+
     ],
 )
-def update_options(value, dateStart, dateStop):
-    print(len(value))
+def update_options(value, dateStart, dateUnit, dateFreq):
+    deltaObj = datetime.now() - datetime.strptime(dateStart, '%Y-%m-%d')
+    print("test")
+    print(deltaObj)
     if len(value) >= 0:
         try:
-            df = pd.DataFrame([{'stockname': value}])
-            dfData = loadStocks('mystocks.json')
-            dfData = dfData[dfData['stockname'] == df.iloc[0]['stockname']]
-            if len(dfData) > 0:
-                df = dfData
-            else:
-                df = fillNameFromYF(df)
-            dfHist = getYFdate(df, dateStart, dateStop)
-            dfHist = computeIchimoku(dfHist[0])
-            return [graphIchimoku(df, dfHist).update({'layout': dict(template="plotly_dark", xaxis_rangeslider_visible=False)})]
+            return [graphDataForStock(value, freq=dateFreq, unit=dateUnit, histoDepth=deltaObj)]
         except:
             raise PreventUpdate
     else:
         raise PreventUpdate 
-
 
 app.css.config.serve_locally = True
 app.scripts.config.serve_locally = True

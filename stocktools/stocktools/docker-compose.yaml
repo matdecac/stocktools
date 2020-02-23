@@ -68,20 +68,20 @@ services:
     entrypoint: "/home/user/venv/bin/jupyter lab --port=8888 --no-browser --ip=0.0.0.0 --allow-root"
 
 
-#  stockapp:
-#    image: dockerdash:latest
-#  build:
-#    context: ./dockerdash
-#    dockerfile: ./Dockerfile
-#    ports:
-#      - 8389:8050
-#    links:
-#      - postgres
-#    volumes:
-#      - rootHost:/datajupyter
-#    restart: always
-#    working_dir: /datajupyter
-#    entrypoint: "/home/user/venv/bin/python main-stocks.py"
+  stockapp:
+    image: dockerdash:latest
+    build:
+        context: ./dockerdash
+        dockerfile: ./Dockerfile
+    ports:
+      - 8389:8050
+    #links:
+    #  - postgres
+    volumes:
+      - rootHost:/datajupyter
+    restart: always
+    working_dir: /datajupyter
+    entrypoint: "/home/user/venv/bin/python main-stocks.py"
 
 
 
