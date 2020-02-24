@@ -19,4 +19,6 @@ RUN mkdir -p venv && \
         plotly \
         telepot \
         yfinance \
-        alpha_vantage
+        alpha_vantage \
+        yahoo_fin \
+        requests_html

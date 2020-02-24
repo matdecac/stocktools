@@ -5,9 +5,8 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import pandas as pd
-from stockList import allStocks
 from copy import copy
-from updateDB import getStockData, HandleDB, getLastValue, getStockName, getStockIntradayData, updateOHLC, createOHLC
+from updateDB import getStockData, HandleDB, getLastValue, getStockName, getStockIntradayData, updateOHLC, getLastsValue
 
 def loadStocks(jsonFile):
     df = pd.read_json(jsonFile, orient='index')
@@ -39,7 +38,9 @@ def loadStocks(jsonFile):
 
 def computeIchimoku(d):
     # compute the average variation between points to create new points
-    res = np.abs(np.mean((d.index[1:-1] - d.index[0:-2]).to_numpy()))
+    diffVar = (d.index[1:-1] - d.index[0:-2]).to_numpy()
+    diffVar = np.abs(pd.to_timedelta((d.index[1:-1] - d.index[0:-2])).astype(np.int64)/1e9)
+    res = np.timedelta64(np.bincount(diffVar.to_list()).argmax(), 's')
     minDate = np.datetime64((np.min(d.index)))
     maxDate = np.datetime64((np.max(d.index)))
     for ind in range(1, 26+1):
@@ -48,10 +49,9 @@ def computeIchimoku(d):
         d = d.append(pd.Series(name=minDate - ind * res))
     d = d.sort_index()
     # Tenkan-sen (Conversion Line): (9-period high + 9-period low)/2))
-    nine_period_high = d['High'].rolling(window= 9).max()
-    nine_period_low = d['Low'].rolling(window= 9).min()
+    nine_period_high = d['High'].rolling(window=9).max()
+    nine_period_low = d['Low'].rolling(window=9).min()
     d.loc[:, 'tenkan_sen'] = (nine_period_high + nine_period_low) /2
-
     # Kijun-sen (Base Line): (26-period high + 26-period low)/2))
     period26_high = d['High'].rolling(window=26).max()
     period26_low = d['Low'].rolling(window=26).min()
@@ -70,18 +70,22 @@ def computeIchimoku(d):
     d.loc[:, 'senkou_span_pos'] = d['senkou_span_a'] > d['senkou_span_b']
     return d
 
-def getValueDays(historyData, days):
-    refDate = (datetime.today() - timedelta(days=days))
-    # In case we do not have enought elements
-    if len(historyData[historyData.index <= refDate.date()]) == 0:
-        return historyData.iloc[-1]['Close']
-    #print(historyData)
-    #pdb.set_trace()
-    result = historyData.iloc[historyData.index.get_loc(datetime.today() - timedelta(days=days),method='backfill')]
+def getValueDays(stockname, historyData, days):
+    if days > 0:
+        refDate = (datetime.today() - timedelta(days=days))
+        # In case we do not have enought elements
+        if len(historyData[historyData.index <= refDate]) == 0:
+            return historyData.iloc[-1]['Close']
+        #display(historyData)
+        #pdb.set_trace()
+        result = historyData.iloc[historyData.index.get_loc(datetime.today() - timedelta(days=days),method='backfill')]['Close']
+    else:
+        result = getLastValue(stockname)
     #
-    return result['Close']
+    return result
 def computeVar(dfSerie, histData, refDay=1):
-    return getValueDays(histData, 0) / getValueDays(histData, refDay) - 1.0
+    stockname = dfSerie['stockname']
+    return getValueDays(stockname, histData, 0) / getValueDays(stockname, histData, refDay) - 1.0
 def checkVarPos(dfSerie, histData, refDay=1, percentVar=0.05):
     return computeVar(dfSerie, histData, refDay) > percentVar
 def checkVarNeg(dfSerie, histData, refDay=1, percentVar=-0.05):
@@ -99,9 +103,55 @@ def gentTextOwnStock(dataOut):
         return ", Net gain : {:.2f} €".format(dataOut['netActualGain']) + ' / ' +  "{:.1f} %".format(dataOut['netActualGainPercent'])
     else:
         return ""
+
+def detectStockVar():
+    seuils = {
+        5: 0.5, 
+        15: 1, 
+        30: 1.5, 
+        60: 2, 
+        120: 3, 
+        240: 5
+    }
+    df = loadStocks('stockprospects.json')
+    listStockNames = [df.loc[ind]['stockname'] for ind in df.index]
+    catAllVals = {}
+    for stockName in listStockNames:
+        lastVals = getLastsValue(stockName, list(seuils.keys()))
+        catAllVals[stockName] = lastVals
+    df = pd.DataFrame().from_dict(catAllVals)
+    tmp = df.iloc[0]
+    df = (df - df.iloc[0])/df.iloc[0] * 100
+    df.drop(0, axis=0, inplace=True)
+    df.sort_index(inplace=True)
+    strAll=''
+    stockMv = []
+    dfStatus = df.copy()
+    for deltaMins, seuil in seuils.items():
+        dfStatus.loc[deltaMins] = df.loc[deltaMins].abs() > seuil
+    for stockName in listStockNames:
+        stockRes = dfStatus[dfStatus[stockName] == True]
+        if len(stockRes) > 0:
+            stockMv.append(stockName)
+        for minutes, status in stockRes[stockName].iteritems():
+            variation = - df.loc[minutes][stockName]
+            if variation > 0:
+                varWord = 'augmenté'
+            else:
+                varWord = 'diminué'
+            strAll+=(
+                genLink1stock(stockName) + ' ' + getStockName(stockName) + ' ' +
+                'à ' + varWord + ' de {:.2f} % '.format(variation) +
+                'dans les ' + str(minutes) + ' dernières minutes.\n'
+            )
+    return (strAll, stockMv)
+    
+def genLink1stock(stockname):
+    return '/stockinfo' + stockname.replace('.', '_')
+    
 def genText1stock(dataOut):
     return  (
-        '/stockinfo' + dataOut['stockname'].replace('.', '_') + ' ' +
+        genLink1stock(dataOut['stockname']) + ' ' +
         getStockName(dataOut['stockname']) +
         ' var : {:.2f}%'.format(dataOut['var1day'] * 100)) + gentTextOwnStock(dataOut) + '\n'
 
@@ -127,8 +177,9 @@ def checkVar(df, nbDays=1, which='all'):
 def graphEvolutionTitre(stockname):
     data = loadStocks('mystocks.json')
     histData = getStockData(stockname)
-    listData = [getValueDays(histData, 30 * months) for months in [12, 6, 3, 1, 1/30, 0]]
-    listData = np.array(listData) / listData[0] * 100
+    histDataIntra = getStockIntradayData(stockname)
+    listData = [getValueDays(stockname, histData, 30 * months) for months in [12, 6, 3, 1, 1/30, 0]]
+    listData = (np.array(listData) - listData[-2]) / listData[-2] * 100
     dataFig = []
     dataFig.append({
             'x': ['1 year ago', 'six months ago', 'three months ago', 'last month', 'yesterday', 'now'],
@@ -313,7 +364,7 @@ def graphGenericStock(stockSerie, stockHist, stockname=''):
     if len(stockSerie) > 0:
         dataFig += graphSelfData(stockSerie)
     fig = go.Figure(data=dataFig, layout={
-        'title': str(stockname),
+        'title': getStockName(str(stockname)),
         #'xaxis':{'range': [startDate, stopDate]}
     })
     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
@@ -336,16 +387,17 @@ def graphDataForStock(stockname, freq=1, unit='D', histoDepth=timedelta(days=60)
     df = loadStocks('mystocks.json')
     if unit in ['T', 'H']:
         historyData = getStockIntradayData(stockname)
-        historyData = createOHLC(historyData, freq=freq, unit=unit)
     else:
         historyData = getStockData(stockname)
-        historyData = updateOHLC(historyData, freq=freq, unit=unit)
+    historyData = updateOHLC(historyData, freq=freq, unit=unit)
     if len(historyData) > 0:
         startDate=datetime.now() - histoDepth
-        historyData = historyData[historyData.index > startDate - getTimeDeltaFromSettings(freq, unit)]
-        print(getTimeDeltaFromSettings(freq, unit))
+        startDate = startDate.replace(hour=0)
+        timestampStart = historyData.index.get_loc(historyData[historyData.index > startDate].iloc[0].name)
+        historyData = historyData.iloc[timestampStart - ((52 + 27)):]
         histo = computeIchimoku(historyData)
         histo = histo[histo.index > startDate]
+        histo.index = histo.index + pd.DateOffset(hours=1)
         return graphGenericStock(df[(df['stockname'] == stockname) & (df['boughtDate'] > datetime.now() - histoDepth)], histo, stockname=stockname)
     else:
         return None

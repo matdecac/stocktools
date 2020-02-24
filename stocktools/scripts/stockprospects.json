@@ -106,5 +106,9 @@
     "26":{
         "stockname":"SU.PA",
         "name":"SCHNEIDER ELECTRIC"
+    },
+    "27":{
+        "stockname":"EMG.PA",
+        "name":"Euromedis groupe"
     }
 }

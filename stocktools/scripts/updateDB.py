@@ -9,6 +9,7 @@ from libs.datamodel import StockDay, StockIntraDay
 from sqlalchemy import create_engine, desc, asc
 from sqlalchemy.orm import scoped_session, sessionmaker
 import yfinance as yf
+from yahoo_fin import stock_info as si
 
 
 def checkMissingStock():
@@ -41,34 +42,16 @@ def addStock(newStockname, jsonToUpdate='stockprospects.json'):
     listStockNamesJSON = [df.loc[ind]['stockname'] for ind in df.index]
     if (
         newStockname not in listStockNamesJSON and
-        len(getYFdata(newStockname, startDate=datetime.now()-timedelta(days=5), stopDate=datetime.now())) > 0
+        len(getYFdata(newStockname, startDate=datetime.now()-timedelta(days=5))) > 0
     ):
         df = df.append({'stockname': newStockname}, ignore_index=True)
         df = fillNameFromYF(df)
         df.to_json(jsonToUpdate, orient='index', indent=4)
         updateDB(daysHisto=365*5)
+        updateDB(daysHisto=6, stockRes='intraday')
         return True
     else:
         return False
-
-def getStockData(stockname):
-    addStock(stockname)
-    handleDB = HandleDB()
-    queryData = handleDB.session.query(StockDay).filter(StockDay.stockname==stockname).order_by(desc(StockDay.datestamp))
-    df = pd.read_sql(queryData.statement, handleDB.engine)
-    handleDB.close()
-    df = df.rename(columns={
-        "stockname": "stockname",
-        "datestamp": "datestamp",
-        "priceOpen": "Open",
-        "priceHigh": "High",
-        "priceLow": "Low",
-        "priceClose": "Close",
-        "priceAdjClose": "Adj Close",
-        "volume": "Volume",
-    })
-    df.index = df['datestamp']
-    return df
 
 def ohlcFromDFparms(test, openC, highC, lowC, closeC, adfCloseC):
     if len(test) > 0:
@@ -87,21 +70,8 @@ def ohlcFromDFparms(test, openC, highC, lowC, closeC, adfCloseC):
             'Close': None,
             'Adj Close': None,
         })
-def ohlcFromPricedf(test):
-    return ohlcFromDFparms(test, 'price', 'price', 'price', 'price', 'price')
 def ohlcFromOHLCdf(test):
     return ohlcFromDFparms(test, 'Open', 'High', 'Low', 'Close', 'Adj Close')
-
-def createOHLC(df, freq=5, unit='T'):
-    if len(df) == 0:
-        return df
-    #assert (len(df) > 0), "Len of DF is 0"
-    if unit not in ['T', 'H', 'D', 'W', 'M']:
-        logging.error('unit ' + str(unit) + ' not allowed')
-        return df
-    newDF = df.sort_index().groupby(pd.Grouper(freq=str(freq)+str(unit))).apply(ohlcFromPricedf)
-    newDF.index = newDF.index.to_pydatetime()
-    return newDF.dropna()
 
 def updateOHLC(df, freq=5, unit='T'):
     if len(df) == 0:
@@ -115,23 +85,77 @@ def updateOHLC(df, freq=5, unit='T'):
     newDF.index = newDF.index.to_pydatetime()
     return newDF.dropna()
 
-def getStockIntradayData(stockname):
-    handleDB = HandleDB()
-    queryData = handleDB.session.query(StockIntraDay).filter(StockIntraDay.stockname==stockname).order_by(desc(StockIntraDay.timestamp))
-    df = pd.read_sql(queryData.statement, handleDB.engine)
-    handleDB.close()
+def prepareStockData(df):
+    df = df.rename(columns={
+        "stockname": "stockname",
+        "timestamp": "timestamp",
+        "priceOpen": "Open",
+        "priceHigh": "High",
+        "priceLow": "Low",
+        "priceClose": "Close",
+        "priceAdjClose": "Adj Close",
+        "volume": "Volume",
+    })
     df.index = df['timestamp']
     return df
 
+def getStockIntradayData(stockname, sinceTime=datetime.now() - timedelta(days=10)):
+    handleDB = HandleDB()
+    queryData = handleDB.session.query(
+        StockIntraDay
+    ).filter(
+        StockIntraDay.stockname==stockname
+    ).filter(
+        StockIntraDay.timestamp >= sinceTime
+    ).order_by(desc(StockIntraDay.timestamp))
+    df = pd.read_sql(queryData.statement, handleDB.engine)
+    handleDB.close()
+    df = prepareStockData(df)
+    return df
 
-def getLastValue(stockname):
+def getStockData(stockname):
     addStock(stockname)
     handleDB = HandleDB()
-    value = handleDB.session.query(StockDay).filter(StockDay.stockname==stockname).order_by(desc(StockDay.datestamp)).first().priceClose
+    queryData = handleDB.session.query(StockDay).filter(StockDay.stockname==stockname).order_by(desc(StockDay.timestamp))
+    df = pd.read_sql(queryData.statement, handleDB.engine)
     handleDB.close()
-    return value
+    df = prepareStockData(df)
+    return df
+
+def getLastsValue(stockname, ptAskedL=[14]):
+    handleDB = HandleDB()
+    values = {}
+    try:
+        values[0] = (handleDB.session.query(StockIntraDay).filter(
+                StockIntraDay.stockname==stockname
+        ).order_by(desc(StockIntraDay.timestamp)).first().priceClose)
+    except:
+        pass
+    for ptAsked in ptAskedL:
+        ptAskedTD = datetime.now() - timedelta(minutes=ptAsked)
+        try:
+            values[ptAsked] = (
+                handleDB.session.query(
+                    StockIntraDay
+                ).filter(
+                    StockIntraDay.stockname==stockname
+                ).filter(
+                    StockIntraDay.timestamp >= ptAskedTD
+                ).order_by(asc(StockIntraDay.timestamp)).first().priceClose
+            )
+        except:
+            pass
+    handleDB.close()
+    return values
 
 
+def getLastValue(stockname):
+    handleDB = HandleDB()
+    value = handleDB.session.query(StockIntraDay).filter(StockIntraDay.stockname==stockname).order_by(desc(StockIntraDay.timestamp)).first()
+    if value is None:
+        value = handleDB.session.query(StockDay).filter(StockDay.stockname==stockname).order_by(desc(StockDay.timestamp)).first()
+    handleDB.close()
+    return value.priceClose
 
 class HandleDB():
     def __init__(self, dbname='sqlite:///stockdb.db'):
@@ -141,60 +165,87 @@ class HandleDB():
     def close(self):
         self.session.close()
 
-def getYFdata(listStockNames, startDate, stopDate):
+def getYFdata(listStockNames, startDate, interval="1m"):
     return yf.download(
         listStockNames,
-        start=startDate, 
-        end=stopDate, 
+        start=startDate,
+        end=datetime.now()+timedelta(days=1), 
+        interval=interval,
         progress=False,
         group_by="ticker"
     )
 
-
-def updateDBintraday():
+def updateDBintradayFromSSI():
     df = pd.read_json('stockprospects.json', orient='index')
     listStockNames = [df.loc[ind]['stockname'] for ind in df.index]
     start_time = time.time()
-    startDate=date.today() - timedelta(days=0)
-    stopDate=date.today() + timedelta(days=1)
-    dataResAll = getYFdata(listStockNames, startDate, stopDate)
+    stockval = {}
+    for stockname in listStockNames:
+        upVal = False
+        if '.PA' in stockname:
+            if (
+                datetime.today().weekday() in [0, 1, 2, 3, 4] and 
+                datetime.today().hour + 1 >= 9 and datetime.today().hour + 1 <= 18
+            ):
+                upVal = True
+        elif '-EUR' in stockname:
+                upVal = True
+        else: # SUPPOSE US VALUE
+            if (
+                datetime.today().weekday() in [0, 1, 2, 3, 4] and 
+                datetime.today().hour - 5 >= 9 and datetime.today().hour - 5 <= 18
+            ): 
+                upVal = True
+        if upVal:
+            try:
+                stockval[stockname] = si.get_live_price(stockname)
+            except:
+                logging.warn( "Value for " + stockname + " failed to be grabbed")
+               
     handleDB = HandleDB()
-    for ind in range(len(listStockNames)):
-        dataRes = dataResAll[listStockNames[ind]].iloc[-1]
-        if not np.isnan(dataRes['Close']):
-            stockIntraDay = StockIntraDay()
-            stockIntraDay.stockname = listStockNames[ind]
-            stockIntraDay.timestamp = datetime.now()
-            stockIntraDay.dateadded = datetime.now()
-            stockIntraDay.price = dataRes['Close']
-            handleDB.session.add(stockIntraDay)
-            handleDB.session.commit()
-            logging.debug('Update for ' + listStockNames[ind] + ' value : {:.2f} €'.format(dataRes['Close']))
+    for stockname, value in stockval.items():
+        stockIntraDay = StockIntraDay()
+        stockIntraDay.stockname = stockname
+        stockIntraDay.timestamp = datetime.now()
+        stockIntraDay.dateadded = datetime.now()
+        stockIntraDay.priceOpen = value
+        stockIntraDay.priceHigh = value
+        stockIntraDay.priceLow = value
+        stockIntraDay.priceClose = value
+        stockIntraDay.priceAdjClose = value
+        handleDB.session.add(stockIntraDay)
+        handleDB.session.commit()
+        logging.debug('Update for ' + stockname + ' value : {:.2f} €'.format(value))
     handleDB.session.close()
     logging.info("Intraday update in %s seconds" % (time.time() - start_time))
 
-def updateDB(daysHisto=10):
+def updateDB(daysHisto=1, stockRes='daily'):
     logger = logging.getLogger()
-    df = pd.read_json('stockprospects.json', orient='index')
     start_time = time.time()
+    dateStart = datetime.now() - timedelta(days=daysHisto)
+    df = pd.read_json('stockprospects.json', orient='index')
     listStockNames = [df.loc[ind]['stockname'] for ind in df.index]
-    startDate=date.today() - timedelta(days=daysHisto)
-    stopDate=date.today() + timedelta(days=1)
-    allStocksHist = getYFdata(listStockNames, startDate, stopDate)
+    if stockRes == 'intraday':
+        StockObj = StockIntraDay
+        df = getYFdata(listStockNames, dateStart, interval="1m")
+    else:
+        StockObj = StockDay
+        df = getYFdata(listStockNames, dateStart, interval="1d")
     historyData = []
-    for ind in range(len(listStockNames)):
-        if len(listStockNames) > 1:
-            historyData.append(allStocksHist[listStockNames[ind]].fillna(method='ffill'))
-        else:
-            historyData.append(allStocksHist.fillna(method='ffill'))
-
+    for stockname in listStockNames:
+        historyData.append(df[stockname][
+            (df[stockname]['Open'].notna()) | 
+            (df[stockname]['High'].notna()) | 
+            (df[stockname]['Low'].notna()) | 
+            (df[stockname]['Close'].notna())
+        ].fillna(method='ffill'))
     for ind in range(len(listStockNames)):
         historyData[ind] = historyData[ind][historyData[ind]['Open'].notna()]
         historyData[ind]['stockname'] = listStockNames[ind]
-        historyData[ind]['datestamp'] = historyData[ind].index
+        historyData[ind]['timestamp'] = historyData[ind].index
         historyData[ind] = historyData[ind].rename(columns={
             "stockname": "stockname",
-            "datestamp": "datestamp",
+            "timestamp": "timestamp",
             "Open": "priceOpen",
             "High": "priceHigh",
             "Low": "priceLow",
@@ -203,23 +254,19 @@ def updateDB(daysHisto=10):
             "Volume": "volume",
         })
         historyData[ind]['dateadded'] = datetime.now()
-
     handleDB = HandleDB()
     for ind in range(len(listStockNames)):
-        dataRes = handleDB.session.query(StockDay).filter(StockDay.stockname==listStockNames[ind]).order_by(desc(StockDay.datestamp)).first()
-        if dataRes is not None:
-            historyData[ind] = historyData[ind][historyData[ind]['datestamp'] >= np.datetime64(dataRes.datestamp)]
-            if len(historyData[ind]) > 0:
-                handleDB.session.delete(dataRes)
-                handleDB.session.commit()
-        else:
-            historyData[ind]
-            print('no data for this stock, adding all')
-            #print(historyData[ind])
-        #display(historyData[ind])
+        dataRes = handleDB.session.query(StockObj).filter(
+            StockObj.stockname==listStockNames[ind]
+        ).filter(
+            StockObj.timestamp >= historyData[ind].iloc[0].name
+        ).filter(
+            StockObj.timestamp <= historyData[ind].iloc[-1].name
+        ).delete()
+
     for ind in range(len(listStockNames)):
         output = historyData[ind].to_dict('records')
-        handleDB.session.bulk_insert_mappings(StockDay, output)
+        handleDB.session.bulk_insert_mappings(StockObj, output)
         handleDB.session.commit()
     handleDB.session.close()
     logging.info("Daily update in %s seconds" % (time.time() - start_time))

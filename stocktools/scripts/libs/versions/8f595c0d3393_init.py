@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 4b99d945ed20
+Revision ID: 8f595c0d3393
 Revises: 
-Create Date: 2020-02-20 21:36:54.117795
+Create Date: 2020-02-24 18:14:24.810932
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '4b99d945ed20'
+revision = '8f595c0d3393'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -21,7 +21,7 @@ def upgrade():
     op.create_table('stockday',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('stockname', sa.String(), nullable=False),
-    sa.Column('datestamp', sa.Date(), nullable=False),
+    sa.Column('timestamp', sa.DateTime(), nullable=False),
     sa.Column('priceOpen', sa.Float(), nullable=True),
     sa.Column('priceHigh', sa.Float(), nullable=True),
     sa.Column('priceLow', sa.Float(), nullable=True),
@@ -35,8 +35,13 @@ def upgrade():
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('stockname', sa.String(), nullable=False),
     sa.Column('timestamp', sa.DateTime(), nullable=False),
+    sa.Column('priceOpen', sa.Float(), nullable=True),
+    sa.Column('priceHigh', sa.Float(), nullable=True),
+    sa.Column('priceLow', sa.Float(), nullable=True),
+    sa.Column('priceClose', sa.Float(), nullable=True),
+    sa.Column('priceAdjClose', sa.Float(), nullable=True),
+    sa.Column('volume', sa.Integer(), nullable=True),
     sa.Column('dateadded', sa.DateTime(), nullable=True),
-    sa.Column('price', sa.Float(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     # ### end Alembic commands ###

@@ -11,23 +11,34 @@ import pandas as pd
 from libsstock import (
     loadStocks, computeIchimoku, checkVar, graphEvolutionTitre,
     graphIchimoku, graphBestGain, graphWorseGain, graphCashLock, graphRendement,
-    graphEvolutionIntraday, graphDataForStock
+    graphEvolutionIntraday, graphDataForStock, detectStockVar
 )
 from plotly_tools import genIMGfromFile
 import telepot
-from updateDB import updateDB, getStockData, updateDBintraday
+from updateDB import updateDB, getStockData, updateDBintradayFromSSI
 
-def loopUpdateDB():
+def loopUpdateDB(mybot, bot_chatID):
     while(1):
-        #if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
-        updateDB()
-        logging.info('Sleeping 5 minutes')
-        time.sleep(60 * 5)
-def loopUpdateDBintraday():
+        try:
+            updateDB(daysHisto=1, stockRes='daily')
+            updateDB(daysHisto=1, stockRes='intraday')
+            logging.info('Sleeping 30 minutes')
+        except:
+            logging.error('loopUpdateDB')
+        time.sleep(60 * 30)
+
+def loopUpdateDBintraday(mybot, bot_chatID):
     while(1):
-        #if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
-        updateDBintraday()
-        logging.info('Sleeping 0.5 minutes')
+        try:
+            updateDBintradayFromSSI()
+            (strOut, listStocks) = detectStockVar()
+            if len(strOut) > 0:
+                mybot.sendMessage(
+                    chat_id, strOut
+                )
+            logging.info('Sleeping 0.5 minutes')
+        except:
+            logging.error('loopUpdateDBintraday')
         time.sleep(60 * 0.5)
 
 def displayGraphValues(mybot, chat_id, msg):
@@ -89,7 +100,7 @@ def genDataFromStock(mybot, chat_id, msg):
     graphDataA.append(graphEvolutionTitre(stockName))
     graphDataA.append(graphDataForStock(stockName, freq=1, unit='W', histoDepth=timedelta(days=360)))
     graphDataA.append(graphDataForStock(stockName, freq=1, unit='D', histoDepth=timedelta(days=60)))
-    graphDataA.append(graphDataForStock(stockName, freq=5, unit='T', histoDepth=timedelta(days=1)))
+    graphDataA.append(graphDataForStock(stockName, freq=5, unit='T', histoDepth=timedelta(days=0)))
     for graphData in graphDataA:
         if graphData is not None:
             genIMGfromFile(graphData, 'img.png', scale=1.3, width=800, height=500)
@@ -148,8 +159,8 @@ def main():
     )
 
 
-    dbUpdate = threading.Thread(name='dbupdate', target=loopUpdateDB, daemon=True)
-    dbUpdateIntraday = threading.Thread(name='dbupdateintraday', target=loopUpdateDBintraday, daemon=True)
+    dbUpdate = threading.Thread(name='dbupdate', target=loopUpdateDB, daemon=True, args=[mybot, bot_chatID])
+    dbUpdateIntraday = threading.Thread(name='dbupdateintraday', target=loopUpdateDBintraday, daemon=True, args=[mybot, bot_chatID])
     dbUpdate.start()
     dbUpdateIntraday.start()
 
@@ -158,7 +169,7 @@ def main():
             thisHourSend = datetime.today().hour
             if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
                 sendVarIf(mybot, bot_chatID, None)
-                #sendVarIfprospects(mybot, bot_chatID, None)
+                sendVarIfprospects(mybot, bot_chatID, None)
         except:
             pass
         print('Sleeping 5 minutes')

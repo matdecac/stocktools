@@ -43,7 +43,7 @@ app.layout = dbc.Container(fluid=True, children=[
         dbc.Col([
             dcc.Markdown(
                 id='main-text-header',
-                children='# Compta decac',
+                children='Stock tool',
                 className="dash-bootstrap"
             ),
         ], md=2, xs=12),
