@@ -40,8 +40,8 @@
         "boughtFrais":1.99,
         "sellFrais":1.99,
         "name":"AKKA TECHNOLOGIES",
-        "sellValue":null,
-        "sellDate":null
+        "sellValue":50.7,
+        "sellDate":1582836069360
     },
     "4":{
         "stockname":"SIGHT.PA",
@@ -51,8 +51,8 @@
         "boughtFrais":1.99,
         "sellFrais":1.99,
         "name":"GENSIGHT BIOLOGICS",
-        "sellValue":null,
-        "sellDate":null
+        "sellValue":2.57,
+        "sellDate":1582836043802.0
     },
     "5":{
         "stockname":"FR.PA",

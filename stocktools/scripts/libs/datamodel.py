@@ -37,3 +37,9 @@ class StockIntraDay(Base):
     priceAdjClose = Column(Float)
     volume = Column(Integer)
     dateadded = Column(DateTime)
+class HistDetectStockVar(Base):
+    __tablename__ = 'histdetectstockvar'
+    id = Column(Integer, primary_key=True)
+    stockname = Column(String, nullable=False)
+    timestamp = Column(DateTime, nullable=False)
+    dataorigin = Column(String, nullable=False)

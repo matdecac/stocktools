@@ -15,7 +15,21 @@ from libsstock import (
 )
 from plotly_tools import genIMGfromFile
 import telepot
-from updateDB import updateDB, getStockData, updateDBintradayFromSSI
+from updateDB import (
+    updateDB, getStockData, updateDBintradayFromSSI,
+    addBoughtLine, addSoldLine
+)
+
+def genBoughtLine(mybot, chat_id, msg):
+    strOut = addBoughtLine(msg['text'])
+    mybot.sendMessage(
+        chat_id, strOut
+    )
+def genSoldLine(mybot, chat_id, msg):
+    strOut = addSoldLine(msg['text'])
+    mybot.sendMessage(
+        chat_id, strOut
+    )
 
 def loopUpdateDB(mybot, bot_chatID):
     while(1):
@@ -23,8 +37,11 @@ def loopUpdateDB(mybot, bot_chatID):
             updateDB(daysHisto=1, stockRes='daily')
             updateDB(daysHisto=1, stockRes='intraday')
             logging.info('Sleeping 30 minutes')
-        except:
+        except Exception as e: 
+            print(e)
             logging.error('loopUpdateDB')
+            logging.error(e)
+            mybot.sendMessage(chat_id, "Error : \n" + str(e))
         time.sleep(60 * 30)
 
 def loopUpdateDBintraday(mybot, bot_chatID):
@@ -34,11 +51,13 @@ def loopUpdateDBintraday(mybot, bot_chatID):
             (strOut, listStocks) = detectStockVar()
             if len(strOut) > 0:
                 mybot.sendMessage(
-                    chat_id, strOut
+                    bot_chatID, strOut
                 )
             logging.info('Sleeping 0.5 minutes')
-        except:
+        except Exception as e:
             logging.error('loopUpdateDBintraday')
+            logging.error(e)
+            mybot.sendMessage(bot_chatID, "Error : \n" + str(e))
         time.sleep(60 * 0.5)
 
 def displayGraphValues(mybot, chat_id, msg):
@@ -122,6 +141,8 @@ availableCommands = {
     'varportefeuille': {'fct': sendVarIfALL, 'details': 'Visualiser les variations sur les valeurs.'},
     'varprospects': {'fct': sendVarIfprospectsALL, 'details': 'Visualiser les variations sur les valeurs en prospects.'},
     'stockinfo': {'fct': genDataFromStock, 'details': 'Visualiser les variations sur les valeurs en prospects.'},
+    'buy': {'fct': genBoughtLine, 'details': 'Ajouter un achat : /buy NOM VALEURUNIT Q.'},
+    'sell': {'fct': genSoldLine, 'details': 'Ajouter une vente : /sell NOM VALEURUNIT.'},
 }
 
 def handle(msg):
@@ -165,15 +186,15 @@ def main():
     dbUpdateIntraday.start()
 
     while(1):
-        try:
-            thisHourSend = datetime.today().hour
-            if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
-                sendVarIf(mybot, bot_chatID, None)
-                sendVarIfprospects(mybot, bot_chatID, None)
-        except:
-            pass
-        print('Sleeping 5 minutes')
-        time.sleep(60 * 5)
+        #try:
+            #thisHourSend = datetime.today().hour
+            #if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
+            #    sendVarIf(mybot, bot_chatID, None)
+            #    sendVarIfprospects(mybot, bot_chatID, None)
+        #except:
+        #    pass
+        print('Sleeping 60 minutes')
+        time.sleep(60 * 60)
 
 if __name__ == '__main__':
     main()

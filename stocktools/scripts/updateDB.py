@@ -5,12 +5,53 @@ import logging
 from datetime import date, datetime, timedelta
 import numpy as np
 import pandas as pd
-from libs.datamodel import StockDay, StockIntraDay
+from libs.datamodel import StockDay, StockIntraDay, HistDetectStockVar
 from sqlalchemy import create_engine, desc, asc
 from sqlalchemy.orm import scoped_session, sessionmaker
 import yfinance as yf
 from yahoo_fin import stock_info as si
 
+def addBoughtLine(msgText):
+    df = pd.read_json('stockprospects.json', orient='index')
+    listStockNamesJSON = [df.loc[ind]['stockname'] for ind in df.index]
+
+    splited = msgText.split(' ')
+    valName = splited[1]
+    value = splited[2]
+    qty = splited[3]
+    jsonToUpdate = 'mystocks.json'
+    if valName in listStockNamesJSON:
+        df = pd.read_json(jsonToUpdate, orient='index')
+        df= df.append({
+            'stockname': valName, 
+            'boughtDate': datetime.today(), 
+            'boughtValue': float(value),
+            'boughtQ': float(qty),
+            'boughtFrais': 1.99,
+            'name': getStockName(valName),
+            'sellFrais': 1.99,
+        }, ignore_index=True)
+        df.to_json(jsonToUpdate, orient='index', indent=4)
+        return "Action rajouté."
+    else:
+        return "Action inconnu, ajout avec /stockinfo" + valName.replace('.', '_')
+
+def addSoldLine(msgText):
+    df = pd.read_json('mystocks.json', orient='index')
+    listStockNamesJSON = [df.loc[ind]['stockname'] for ind in df.index]
+
+    splited = msgText.split(' ')
+    valName = splited[1]
+    value = splited[2]
+    jsonToUpdate = 'mystocks.json'
+    if valName in listStockNamesJSON:
+        df = pd.read_json(jsonToUpdate, orient='index')
+        df.loc[df[df['stockname'] == valName].iloc[-1].name, 'sellValue'] = float(value)
+        df.loc[df[df['stockname'] == valName].iloc[-1].name, 'sellDate'] = datetime.today()
+        df.to_json(jsonToUpdate, orient='index', indent=4)
+        return "Action vendu."
+    else:
+        return "Action inconnu, ajout avec /stockinfo" + valName.replace('.', '_')
 
 def checkMissingStock():
     jsonToUpdate = 'mystocks.json'
@@ -98,6 +139,29 @@ def prepareStockData(df):
     })
     df.index = df['timestamp']
     return df
+
+def checkSendMessage(stockName, message_type, timestamp=datetime.now() - timedelta(minutes=30)):
+    handleDB = HandleDB()
+    
+    result = handleDB.session.query(
+        HistDetectStockVar
+    ).filter(
+        HistDetectStockVar.stockname==stockName
+    ).filter(
+        HistDetectStockVar.timestamp >= timestamp
+    ).filter(
+        HistDetectStockVar.dataorigin == message_type
+    ).order_by(desc(HistDetectStockVar.timestamp)).all()
+    if len(result) == 0:
+        histDetect = HistDetectStockVar()
+        histDetect.stockname = stockName
+        histDetect.dataorigin = message_type
+        histDetect.timestamp = datetime.now()
+        handleDB.session.add(histDetect)
+        handleDB.session.commit()
+        handleDB.session.close()
+        return True
+    return False
 
 def getStockIntradayData(stockname, sinceTime=datetime.now() - timedelta(days=10)):
     handleDB = HandleDB()
@@ -256,18 +320,23 @@ def updateDB(daysHisto=1, stockRes='daily'):
         historyData[ind]['dateadded'] = datetime.now()
     handleDB = HandleDB()
     for ind in range(len(listStockNames)):
-        dataRes = handleDB.session.query(StockObj).filter(
-            StockObj.stockname==listStockNames[ind]
-        ).filter(
-            StockObj.timestamp >= historyData[ind].iloc[0].name
-        ).filter(
-            StockObj.timestamp <= historyData[ind].iloc[-1].name
-        ).delete()
+        if len(historyData[ind]) > 0:
+            dataRes = handleDB.session.query(StockObj).filter(
+                StockObj.stockname==listStockNames[ind]
+            ).filter(
+                StockObj.timestamp >= historyData[ind].iloc[0].name
+            ).filter(
+                StockObj.timestamp <= historyData[ind].iloc[-1].name
+            ).delete()
+        else:
+            logging.info("No data to add for : " + listStockNames[ind])
+        
 
     for ind in range(len(listStockNames)):
-        output = historyData[ind].to_dict('records')
-        handleDB.session.bulk_insert_mappings(StockObj, output)
-        handleDB.session.commit()
+        if len(historyData[ind]) > 0:
+            output = historyData[ind].to_dict('records')
+            handleDB.session.bulk_insert_mappings(StockObj, output)
+            handleDB.session.commit()
     handleDB.session.close()
     logging.info("Daily update in %s seconds" % (time.time() - start_time))
 

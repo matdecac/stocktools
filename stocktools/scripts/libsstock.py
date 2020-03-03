@@ -6,7 +6,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import pandas as pd
 from copy import copy
-from updateDB import getStockData, HandleDB, getLastValue, getStockName, getStockIntradayData, updateOHLC, getLastsValue
+from updateDB import (
+    getStockData, HandleDB, getLastValue, getStockName, getStockIntradayData, updateOHLC, getLastsValue,
+    checkSendMessage
+)
 
 def loadStocks(jsonFile):
     df = pd.read_json(jsonFile, orient='index')
@@ -133,17 +136,18 @@ def detectStockVar():
         stockRes = dfStatus[dfStatus[stockName] == True]
         if len(stockRes) > 0:
             stockMv.append(stockName)
-        for minutes, status in stockRes[stockName].iteritems():
-            variation = - df.loc[minutes][stockName]
-            if variation > 0:
-                varWord = 'augmenté'
-            else:
-                varWord = 'diminué'
-            strAll+=(
-                genLink1stock(stockName) + ' ' + getStockName(stockName) + ' ' +
-                'à ' + varWord + ' de {:.2f} % '.format(variation) +
-                'dans les ' + str(minutes) + ' dernières minutes.\n'
-            )
+            if (checkSendMessage(stockName, 'detectStockVar'))
+                for minutes, status in stockRes[stockName].iteritems():
+                    variation = - df.loc[minutes][stockName]
+                    if variation > 0:
+                        varWord = 'augmenté'
+                    else:
+                        varWord = 'diminué'
+                    strAll+=(
+                        genLink1stock(stockName) + ' ' + getStockName(stockName) + ' ' +
+                        'à ' + varWord + ' de {:.2f} % '.format(variation) +
+                        'dans les ' + str(minutes) + ' dernières minutes.\n'
+                    )
     return (strAll, stockMv)
     
 def genLink1stock(stockname):
@@ -390,9 +394,9 @@ def graphDataForStock(stockname, freq=1, unit='D', histoDepth=timedelta(days=60)
     else:
         historyData = getStockData(stockname)
     historyData = updateOHLC(historyData, freq=freq, unit=unit)
-    if len(historyData) > 0:
-        startDate=datetime.now() - histoDepth
-        startDate = startDate.replace(hour=0)
+    startDate=datetime.now() - histoDepth
+    startDate = startDate.replace(hour=0)
+    if len(historyData) > 0 and len(historyData[historyData.index > startDate]) > 0:
         timestampStart = historyData.index.get_loc(historyData[historyData.index > startDate].iloc[0].name)
         historyData = historyData.iloc[timestampStart - ((52 + 27)):]
         histo = computeIchimoku(historyData)
