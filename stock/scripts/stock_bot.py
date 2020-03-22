@@ -48,11 +48,11 @@ def loopUpdateDBintraday(mybot, bot_chatID):
     while(1):
         try:
             updateDBintradayFromSSI()
-            (strOut, listStocks) = detectStockVar()
+            (strOut, listStocks) = detectStockVar(datetime.now() - timedelta(minutes=120))
             if len(strOut) > 0:
                 mybot.sendMessage(
                     bot_chatID, strOut
-                )
+                ) 
             logging.info('Sleeping 0.5 minutes')
         except Exception as e:
             logging.error('loopUpdateDBintraday')

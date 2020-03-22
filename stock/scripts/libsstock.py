@@ -107,7 +107,7 @@ def gentTextOwnStock(dataOut):
     else:
         return ""
 
-def detectStockVar():
+def detectStockVar(sendIfsince=datetime.now() - timedelta(minutes=30)):
     seuils = {
         5: 0.5, 
         15: 1, 
@@ -136,7 +136,7 @@ def detectStockVar():
         stockRes = dfStatus[dfStatus[stockName] == True]
         if len(stockRes) > 0:
             stockMv.append(stockName)
-            if (checkSendMessage(stockName, 'detectStockVar'))
+            if (checkSendMessage(stockName, 'detectStockVar', sendIfsince)):
                 for minutes, status in stockRes[stockName].iteritems():
                     variation = - df.loc[minutes][stockName]
                     if variation > 0:

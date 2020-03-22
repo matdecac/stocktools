@@ -6,19 +6,19 @@ volumes:
     driver_opts:
       type: 'none'
       o: 'bind'
-      device: '/home/comptadecac/stocktools/store-sql'
+      device: '$PWD/sqlConf'
   rootHost:
     driver: local
     driver_opts:
       type: 'none'
       o: 'bind'
-      device: '/home/comptadecac/stocktools/scripts'
+      device: '$PWD/scripts'
   jupyterConfig:
     driver: local
     driver_opts:
       type: 'none'
       o: 'bind'
-      device: '/home/comptadecac/stocktools/jupyterconfig'
+      device: '$PWD/jupyterConf'
 
 services:
   orcapp:

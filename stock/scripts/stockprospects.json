@@ -110,5 +110,13 @@
     "27":{
         "stockname":"EMG.PA",
         "name":"Euromedis groupe"
+    },
+    "28":{
+        "stockname":"ALBPS.PA",
+        "name":"Biophytis SA"
+    },
+    "29":{
+        "stockname":"HO.PA",
+        "name":"THALES"
     }
 }
