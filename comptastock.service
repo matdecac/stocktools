@@ -6,8 +6,8 @@ After=docker.service
 [Service]
 Restart=always
 
-Environment=PWD=/media/CR750/services-wk/comptadecac/stock
-WorkingDirectory=/media/CR750/services-wk/comptadecac/stock
+Environment=PWD=/media/CR750/services-wk/stock
+WorkingDirectory=/media/CR750/services-wk/stock
 
 # Compose up
 ExecStart=/usr/bin/docker-compose up
