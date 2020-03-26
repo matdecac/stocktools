@@ -97,5 +97,49 @@
         "name":"NOVACYT",
         "sellValue":1.03,
         "sellDate":1582156800000.0
+    },
+    "9":{
+        "stockname":"AI.PA",
+        "boughtDate":1585124678237,
+        "boughtValue":111.0,
+        "boughtQ":1.0,
+        "boughtFrais":1.99,
+        "sellFrais":1.99,
+        "name":"AIR LIQUIDE",
+        "sellValue":null,
+        "sellDate":null
+    },
+    "10":{
+        "stockname":"CGG.PA",
+        "boughtDate":1585125616088,
+        "boughtValue":0.9866,
+        "boughtQ":100.0,
+        "boughtFrais":1.99,
+        "sellFrais":1.99,
+        "name":"CGG",
+        "sellValue":null,
+        "sellDate":null
+    },
+    "11":{
+        "stockname":"EMG.PA",
+        "boughtDate":1585126858183,
+        "boughtValue":11.5,
+        "boughtQ":4.0,
+        "boughtFrais":1.99,
+        "sellFrais":1.99,
+        "name":"Euromedis groupe",
+        "sellValue":16.0,
+        "sellDate":1585211054385.0
+    },
+    "12":{
+        "stockname":"ALERS.PA",
+        "boughtDate":1585223576680,
+        "boughtValue":9.16,
+        "boughtQ":7.0,
+        "boughtFrais":1.99,
+        "sellFrais":1.99,
+        "name":"EUROBIO SCIENT",
+        "sellValue":null,
+        "sellDate":null
     }
 }

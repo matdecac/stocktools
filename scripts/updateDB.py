@@ -249,17 +249,17 @@ def updateDBintradayFromSSI():
         if '.PA' in stockname:
             if (
                 datetime.today().weekday() in [0, 1, 2, 3, 4] and 
-                datetime.today().hour + 1 >= 9 and datetime.today().hour + 1 <= 18
+                nowTime >= 9 and nowTime <= 18
             ):
                 upVal = True
-        elif '-EUR' in stockname:
-                upVal = True
-        else: # SUPPOSE US VALUE
-            if (
-                datetime.today().weekday() in [0, 1, 2, 3, 4] and 
-                datetime.today().hour - 5 >= 9 and datetime.today().hour - 5 <= 18
-            ): 
-                upVal = True
+        #elif '-EUR' in stockname:
+        #        upVal = True
+        #else: # SUPPOSE US VALUE
+        #    if (
+        #        datetime.today().weekday() in [0, 1, 2, 3, 4] and 
+        #        datetime.today().hour - 5 >= 9 and datetime.today().hour - 5 <= 18
+        #    ): 
+        #        upVal = True
         if upVal:
             try:
                 stockval[stockname] = si.get_live_price(stockname)

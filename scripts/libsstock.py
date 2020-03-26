@@ -11,6 +11,48 @@ from updateDB import (
     checkSendMessage
 )
 
+def isMarketOpen(market='PA'): 
+    import pytz
+    def utc2local(utc_dt, local_tz=pytz.timezone('Europe/Paris')):
+        local_dt = utc_dt.replace(tzinfo=pytz.utc).astimezone(local_tz)
+        return local_tz.normalize(local_dt) # .normalize might be unnecessary
+    
+
+    nowTime =  utc2local(datetime.today().replace(hour=datetime.today().hour))
+    if market == 'PA':
+        openM =  utc2local(datetime.today().replace(hour=8, minute=55, second=0))
+        closeM =  utc2local(datetime.today().replace(hour=17, minute=40, second=0))
+    elif market == 'NY':
+        openM =  utc2local(datetime.today().replace(hour=9+5, minute=30, second=0))
+        closeM =  utc2local(datetime.today().replace(hour=16+5, minute=0, second=0))
+    else:
+        logging.error('Market: ' + str(market) + ' do not exist')
+        return False
+    if nowTime > openM and nowTime < closeM and nowTime.weekday() in [0, 1, 2, 3, 4]:
+        return True
+    else:
+        return False
+
+def timeFromOpenningMin(market='PA'): 
+    import pytz
+    def utc2local(utc_dt, local_tz=pytz.timezone('Europe/Paris')):
+        local_dt = utc_dt.replace(tzinfo=pytz.utc).astimezone(local_tz)
+        return local_tz.normalize(local_dt) # .normalize might be unnecessary
+    
+
+    nowTime =  utc2local(datetime.today().replace(hour=datetime.today().hour))
+    if market == 'PA':
+        openM =  utc2local(datetime.today().replace(hour=8, minute=55, second=0))
+        closeM =  utc2local(datetime.today().replace(hour=17, minute=40, second=0))
+    elif market == 'NY':
+        openM =  utc2local(datetime.today().replace(hour=9+5, minute=30, second=0))
+        closeM =  utc2local(datetime.today().replace(hour=16+5, minute=0, second=0))
+    else:
+        logging.error('Market: ' + str(market) + ' do not exist')
+        return False
+    deltaTime = nowTime - openM
+    return deltaTime.seconds / 60
+
 def loadStocks(jsonFile):
     df = pd.read_json(jsonFile, orient='index')
     df['valueNow'] = df['stockname'].apply(lambda x : getLastValue(x))
@@ -38,6 +80,31 @@ def loadStocks(jsonFile):
         if 'sellDate' in df.columns:
             df['sellDate'] = pd.to_datetime(df['sellDate'], unit='ms')
     return df
+
+def computeRRvals(boughtNetVal, boughtBrutVal, maxLoss=0.05, riskRewardRatio=2):
+    impactFrais = (boughtNetVal - boughtBrutVal) / boughtBrutVal
+    if impactFrais < maxLoss:
+        stopLossVal = boughtNetVal * (1 - maxLoss)
+    else:
+        stopLossVal = boughtNetVal * (1 - impactFrais - 0.01)
+    takeProfitVal = boughtNetVal * (1 + maxLoss * riskRewardRatio)
+    stopLossRatio = (stopLossVal - boughtNetVal) / boughtNetVal
+    takeProfitRatio = (takeProfitVal - boughtNetVal) / boughtNetVal
+    return {
+        'impactFrais': impactFrais,
+        'stopLossVal': stopLossVal,
+        'takeProfitVal': takeProfitVal,
+        'stopLossRatio': stopLossRatio,
+        'takeProfitRatio': takeProfitRatio,
+    }
+
+def computeParms(boughtValue, investValue, valFraisB = 1.99, valFraisS = 1.99, riskRewardRatio=2, maxLoss=0.05):
+    sumFrais = valFraisS + valFraisB
+    boughtQ = np.floor((investValue - valFraisB) / boughtValue)
+    investCash = boughtValue * boughtQ + sumFrais
+    valBuy = investCash / boughtQ
+    return (boughtQ, investCash, valBuy)
+    
 
 def computeIchimoku(d):
     # compute the average variation between points to create new points
@@ -108,6 +175,8 @@ def gentTextOwnStock(dataOut):
         return ""
 
 def detectStockVar(sendIfsince=datetime.now() - timedelta(minutes=30)):
+    strAll=''
+    stockMv = []
     seuils = {
         5: 0.5, 
         15: 1, 
@@ -117,37 +186,41 @@ def detectStockVar(sendIfsince=datetime.now() - timedelta(minutes=30)):
         240: 5
     }
     df = loadStocks('stockprospects.json')
-    listStockNames = [df.loc[ind]['stockname'] for ind in df.index]
-    catAllVals = {}
-    for stockName in listStockNames:
-        lastVals = getLastsValue(stockName, list(seuils.keys()))
-        catAllVals[stockName] = lastVals
-    df = pd.DataFrame().from_dict(catAllVals)
-    tmp = df.iloc[0]
-    df = (df - df.iloc[0])/df.iloc[0] * 100
-    df.drop(0, axis=0, inplace=True)
-    df.sort_index(inplace=True)
-    strAll=''
-    stockMv = []
-    dfStatus = df.copy()
-    for deltaMins, seuil in seuils.items():
-        dfStatus.loc[deltaMins] = df.loc[deltaMins].abs() > seuil
-    for stockName in listStockNames:
-        stockRes = dfStatus[dfStatus[stockName] == True]
-        if len(stockRes) > 0:
-            stockMv.append(stockName)
-            if (checkSendMessage(stockName, 'detectStockVar', sendIfsince)):
-                for minutes, status in stockRes[stockName].iteritems():
-                    variation = - df.loc[minutes][stockName]
-                    if variation > 0:
-                        varWord = 'augmenté'
-                    else:
-                        varWord = 'diminué'
-                    strAll+=(
-                        genLink1stock(stockName) + ' ' + getStockName(stockName) + ' ' +
-                        'à ' + varWord + ' de {:.2f} % '.format(variation) +
-                        'dans les ' + str(minutes) + ' dernières minutes.\n'
-                    )
+    listStockNames = list(df[df['stockname'].str.contains('.PA')]['stockname'].values)
+    minsOpen = timeFromOpenningMin(market='PA')
+    delList = [seuil for seuil in seuils.keys() if minsOpen < seuil]
+    for key in delList: del seuils[key]
+
+    if len(seuils) == 0:
+        catAllVals = {}
+        for stockName in listStockNames:
+            lastVals = getLastsValue(stockName, list(seuils.keys()))
+            catAllVals[stockName] = lastVals
+        df = pd.DataFrame().from_dict(catAllVals)
+        tmp = df.iloc[0]
+        df = (df - df.iloc[0])/df.iloc[0] * 100
+        df.drop(0, axis=0, inplace=True)
+        df.sort_index(inplace=True)
+        display(df)
+        dfStatus = df.copy()
+        for deltaMins, seuil in seuils.items():
+            dfStatus.loc[deltaMins] = df.loc[deltaMins].abs() > seuil
+        for stockName in listStockNames:
+            stockRes = dfStatus[dfStatus[stockName] == True]
+            if len(stockRes) > 0:
+                stockMv.append(stockName)
+                if (checkSendMessage(stockName, 'detectStockVar', sendIfsince)):
+                    for minutes, status in stockRes[stockName].iteritems():
+                        variation = - df.loc[minutes][stockName]
+                        if variation > 0:
+                            varWord = 'augmenté'
+                        else:
+                            varWord = 'diminué'
+                        strAll+=(
+                            genLink1stock(stockName) + ' ' + getStockName(stockName) + ' ' +
+                            'à ' + varWord + ' de {:.2f} % '.format(variation) +
+                            'dans les ' + str(minutes) + ' dernières minutes.\n'
+                        )
     return (strAll, stockMv)
     
 def genLink1stock(stockname):

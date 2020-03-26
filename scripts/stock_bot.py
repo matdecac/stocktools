@@ -11,7 +11,8 @@ import pandas as pd
 from libsstock import (
     loadStocks, computeIchimoku, checkVar, graphEvolutionTitre,
     graphIchimoku, graphBestGain, graphWorseGain, graphCashLock, graphRendement,
-    graphEvolutionIntraday, graphDataForStock, detectStockVar
+    graphEvolutionIntraday, graphDataForStock, detectStockVar, computeParms,
+    computeRRvals, isMarketOpen
 )
 from plotly_tools import genIMGfromFile
 import telepot
@@ -22,6 +23,7 @@ from updateDB import (
 
 def genBoughtLine(mybot, chat_id, msg):
     strOut = addBoughtLine(msg['text'])
+    strOut += computeRRvalues(msg['text'])
     mybot.sendMessage(
         chat_id, strOut
     )
@@ -31,6 +33,18 @@ def genSoldLine(mybot, chat_id, msg):
         chat_id, strOut
     )
 
+def computeBuyParms(mybot, chat_id, msg):
+    msgText = msg['text'].split(' ')
+    (boughtQ, investCash, valBuy) = computeParms(float(msgText[1]), float(msgText[2]))
+    rrVals = computeRRvals(valBuy, float(msgText[1]), maxLoss=0.05, riskRewardRatio=2)
+    strOut = 'Ordre à seuil de déclenchement :\n'
+    strOut += '- Q={:.0f}, PRU={:.3f} €, capital={:.3f} €, Frais: {:.1f}\n'.format(boughtQ, valBuy, investCash, rrVals['impactFrais'] * 100)
+    strOut += '- Stoploss: {:.2f} € / {:.1f} %\n'.format(rrVals['stopLossVal'], rrVals['stopLossRatio'] * 100)
+    strOut += '- Sell    : {:.2f} € / {:.1f} %\n'.format(rrVals['takeProfitVal'], rrVals['takeProfitRatio'] * 100)
+    mybot.sendMessage(
+        chat_id, strOut
+    )
+    
 def loopUpdateDB(mybot, bot_chatID):
     while(1):
         try:
@@ -47,12 +61,13 @@ def loopUpdateDB(mybot, bot_chatID):
 def loopUpdateDBintraday(mybot, bot_chatID):
     while(1):
         try:
-            updateDBintradayFromSSI()
-            (strOut, listStocks) = detectStockVar(datetime.now() - timedelta(minutes=120))
-            if len(strOut) > 0:
-                mybot.sendMessage(
-                    bot_chatID, strOut
-                ) 
+            if isMarketOpen(market='PA'):
+                updateDBintradayFromSSI()
+                (strOut, listStocks) = detectStockVar(datetime.now() - timedelta(minutes=120))
+                if len(strOut) > 0:
+                    mybot.sendMessage(
+                        bot_chatID, strOut
+                    ) 
             logging.info('Sleeping 0.5 minutes')
         except Exception as e:
             logging.error('loopUpdateDBintraday')
@@ -115,10 +130,10 @@ def genDataFromStock(mybot, chat_id, msg):
     mybot.sendMessage(
         chat_id, 'Generate data for ' + stockName
     )
-    graphDataA = []
-    graphDataA.append(graphEvolutionTitre(stockName))
-    graphDataA.append(graphDataForStock(stockName, freq=1, unit='W', histoDepth=timedelta(days=360)))
-    graphDataA.append(graphDataForStock(stockName, freq=1, unit='D', histoDepth=timedelta(days=60)))
+    #graphDataA = []
+    #graphDataA.append(graphEvolutionTitre(stockName))
+    #graphDataA.append(graphDataForStock(stockName, freq=1, unit='W', histoDepth=timedelta(days=360)))
+    #graphDataA.append(graphDataForStock(stockName, freq=1, unit='D', histoDepth=timedelta(days=60)))
     graphDataA.append(graphDataForStock(stockName, freq=5, unit='T', histoDepth=timedelta(days=0)))
     for graphData in graphDataA:
         if graphData is not None:
@@ -143,6 +158,8 @@ availableCommands = {
     'stockinfo': {'fct': genDataFromStock, 'details': 'Visualiser les variations sur les valeurs en prospects.'},
     'buy': {'fct': genBoughtLine, 'details': 'Ajouter un achat : /buy NOM VALEURUNIT Q.'},
     'sell': {'fct': genSoldLine, 'details': 'Ajouter une vente : /sell NOM VALEURUNIT.'},
+    'computeparmsbuy': {'fct': computeBuyParms, 'details': 'Paramètres d\'achats /computeparmsbuy valeur_unitaire budget_invest'},
+    
 }
 
 def handle(msg):
@@ -186,13 +203,6 @@ def main():
     dbUpdateIntraday.start()
 
     while(1):
-        #try:
-            #thisHourSend = datetime.today().hour
-            #if (datetime.today().weekday() in [0, 1, 2, 3, 4] and datetime.today().hour + 2 >= 9 and datetime.today().hour + 2 <= 18):
-            #    sendVarIf(mybot, bot_chatID, None)
-            #    sendVarIfprospects(mybot, bot_chatID, None)
-        #except:
-        #    pass
         print('Sleeping 60 minutes')
         time.sleep(60 * 60)
 

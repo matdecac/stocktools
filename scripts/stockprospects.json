@@ -118,5 +118,9 @@
     "29":{
         "stockname":"HO.PA",
         "name":"THALES"
+    },
+    "30":{
+        "stockname":"FP.PA",
+        "name":"TOTAL"
     }
 }
