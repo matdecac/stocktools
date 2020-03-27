@@ -4,7 +4,7 @@ RUN apt-get update && \
     apt-get install -y gcc python3 python-pip python3-venv && \
     rm -rf /var/lib/apt/lists/* && \
     rm /bin/sh && ln -s /bin/bash /bin/sh && \
-    useradd user --home /home/user/ --create-home --shell /bin/bash --uid 994
+    useradd user --home /home/user/ --create-home --shell /bin/bash --uid 1000
 USER user
 WORKDIR "/home/user/"
 RUN mkdir -p venv && \

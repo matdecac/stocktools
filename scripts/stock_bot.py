@@ -182,8 +182,11 @@ def handle(msg):
 
 def main():
     global mybot
-    bot_token = '***REMOVED***'
-    bot_chatID = '***REMOVED***'
+    with open('credential.secret', 'r') as infile:
+        creds = json.load(infile)
+    bot_token = creds['bot_token']
+    bot_chatID = creds['bot_chatID']
+    alphaVantage= creds['av_token']
     mybot = telepot.Bot(bot_token)
     mybot.message_loop(handle)
     mybot.sendMessage(

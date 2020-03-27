@@ -27,3 +27,5 @@ venv/
 *.DS_Store
 *.csv
 stocktools/store-sql/
+*.secret
+
