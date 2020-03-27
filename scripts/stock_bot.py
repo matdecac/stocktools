@@ -12,13 +12,13 @@ from libsstock import (
     loadStocks, computeIchimoku, checkVar, graphEvolutionTitre,
     graphIchimoku, graphBestGain, graphWorseGain, graphCashLock, graphRendement,
     graphEvolutionIntraday, graphDataForStock, detectStockVar, computeParms,
-    computeRRvals, isMarketOpen
+    computeRRvals
 )
 from plotly_tools import genIMGfromFile
 import telepot
 from updateDB import (
     updateDB, getStockData, updateDBintradayFromSSI,
-    addBoughtLine, addSoldLine
+    addBoughtLine, addSoldLine, isMarketOpen
 )
 
 def genBoughtLine(mybot, chat_id, msg):
@@ -77,6 +77,18 @@ def loopUpdateDBintraday(mybot, bot_chatID):
 
 def displayGraphValues(mybot, chat_id, msg):
     df = loadStocks('mystocks.json')
+    dfS = df[df['sellValue'].isna()].sort_values('boughtDate')
+    strOut = ''
+    for lineIND in dfS.index:
+        line = dfS.loc[lineIND]
+        strOut += line['name'] + " / " + line['stockname'] + " / " + "/stockinfo" + str(line['stockname']).replace('.', '_') + '\n'
+
+        strOut += "- PRU      : {:.2f} €\n".format(line['boughtNetValue'])
+        strOut += "- COURS    : {:.2f} €\n".format(line['valueNow'])
+        strOut += "- CAPITAL  : {:.2f} €\n".format(line['netActualLock'])
+        strOut += "- LOSS/GAIN: {:.2f} % / {:.2f} €\n".format(line['netActualGainPercent'], line['netActualGain'])
+    mybot.sendMessage(chat_id, strOut)
+
     genIMGfromFile(graphRendement(df), 'img.png', scale=1.3, width=800, height=500)
     mybot.sendPhoto(chat_id, open('img.png', 'rb'))
 
@@ -130,7 +142,7 @@ def genDataFromStock(mybot, chat_id, msg):
     mybot.sendMessage(
         chat_id, 'Generate data for ' + stockName
     )
-    #graphDataA = []
+    graphDataA = []
     #graphDataA.append(graphEvolutionTitre(stockName))
     #graphDataA.append(graphDataForStock(stockName, freq=1, unit='W', histoDepth=timedelta(days=360)))
     #graphDataA.append(graphDataForStock(stockName, freq=1, unit='D', histoDepth=timedelta(days=60)))

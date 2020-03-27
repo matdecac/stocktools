@@ -28,4 +28,4 @@ venv/
 *.csv
 stocktools/store-sql/
 *.secret
-
+jupyterConf/

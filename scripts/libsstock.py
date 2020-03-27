@@ -8,30 +8,8 @@ import pandas as pd
 from copy import copy
 from updateDB import (
     getStockData, HandleDB, getLastValue, getStockName, getStockIntradayData, updateOHLC, getLastsValue,
-    checkSendMessage
+    checkSendMessage, isMarketOpen
 )
-
-def isMarketOpen(market='PA'): 
-    import pytz
-    def utc2local(utc_dt, local_tz=pytz.timezone('Europe/Paris')):
-        local_dt = utc_dt.replace(tzinfo=pytz.utc).astimezone(local_tz)
-        return local_tz.normalize(local_dt) # .normalize might be unnecessary
-    
-
-    nowTime =  utc2local(datetime.today().replace(hour=datetime.today().hour))
-    if market == 'PA':
-        openM =  utc2local(datetime.today().replace(hour=8, minute=55, second=0))
-        closeM =  utc2local(datetime.today().replace(hour=17, minute=40, second=0))
-    elif market == 'NY':
-        openM =  utc2local(datetime.today().replace(hour=9+5, minute=30, second=0))
-        closeM =  utc2local(datetime.today().replace(hour=16+5, minute=0, second=0))
-    else:
-        logging.error('Market: ' + str(market) + ' do not exist')
-        return False
-    if nowTime > openM and nowTime < closeM and nowTime.weekday() in [0, 1, 2, 3, 4]:
-        return True
-    else:
-        return False
 
 def timeFromOpenningMin(market='PA'): 
     import pytz

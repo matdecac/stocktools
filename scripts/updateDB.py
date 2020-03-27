@@ -11,6 +11,29 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 import yfinance as yf
 from yahoo_fin import stock_info as si
 
+
+def isMarketOpen(market='PA'): 
+    import pytz
+    def utc2local(utc_dt, local_tz=pytz.timezone('Europe/Paris')):
+        local_dt = utc_dt.replace(tzinfo=pytz.utc).astimezone(local_tz)
+        return local_tz.normalize(local_dt) # .normalize might be unnecessary
+    
+
+    nowTime =  utc2local(datetime.today().replace(hour=datetime.today().hour))
+    if market == 'PA':
+        openM =  utc2local(datetime.today().replace(hour=7, minute=55, second=0))
+        closeM =  utc2local(datetime.today().replace(hour=16, minute=40, second=0))
+    elif market == 'NY':
+        openM =  utc2local(datetime.today().replace(hour=9+5, minute=30, second=0))
+        closeM =  utc2local(datetime.today().replace(hour=16+5, minute=0, second=0))
+    else:
+        logging.error('Market: ' + str(market) + ' do not exist')
+        return False
+    if nowTime > openM and nowTime < closeM and nowTime.weekday() in [0, 1, 2, 3, 4]:
+        return True
+    else:
+        return False
+
 def addBoughtLine(msgText):
     df = pd.read_json('stockprospects.json', orient='index')
     listStockNamesJSON = [df.loc[ind]['stockname'] for ind in df.index]
@@ -247,10 +270,7 @@ def updateDBintradayFromSSI():
     for stockname in listStockNames:
         upVal = False
         if '.PA' in stockname:
-            if (
-                datetime.today().weekday() in [0, 1, 2, 3, 4] and 
-                nowTime >= 9 and nowTime <= 18
-            ):
+            if isMarketOpen('PA'):
                 upVal = True
         #elif '-EUR' in stockname:
         #        upVal = True

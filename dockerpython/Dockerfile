@@ -3,14 +3,11 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y gcc python3 python-pip python3-venv && \
     rm -rf /var/lib/apt/lists/* && \
-    rm /bin/sh && ln -s /bin/bash /bin/sh && \
-    useradd user --home /home/user/ --create-home --shell /bin/bash --uid 1000
-USER user
-WORKDIR "/home/user/"
-RUN mkdir -p venv && \
-    python3 -m venv venv/ --system-site-packages && \
-    venv/bin/pip3 install --upgrade pip --no-cache-dir && \
-    venv/bin/pip3 install --no-cache-dir \
+    rm /bin/sh && ln -s /bin/bash /bin/sh
+RUN mkdir -p /venv && \
+    python3 -m venv /venv/ --system-site-packages && \
+    /venv/bin/pip3 install --upgrade pip --no-cache-dir && \
+    /venv/bin/pip3 install --no-cache-dir \
         numpy \
         pandas \
         sqlalchemy \
@@ -22,3 +19,6 @@ RUN mkdir -p venv && \
         alpha_vantage \
         yahoo_fin \
         requests_html
+RUN useradd user --home /home/user/ --create-home --shell /bin/bash --uid 1000
+USER user
+WORKDIR "/home/user/"
